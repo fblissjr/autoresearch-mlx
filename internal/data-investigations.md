@@ -6,35 +6,54 @@ The baseline autoresearch approach is algorithm-driven: optimize the model archi
 
 ## Active
 
-### 1. FineWeb quality filtering
-**Status**: Investigating
-**Hypothesis**: FineWeb-Edu provides quality scores per document. Filtering to higher-quality documents should improve val_bpb at same compute budget, since low-quality web text wastes training tokens.
-**Approach**: Check if FineWeb-Edu scores are available in our data pipeline, add a quality threshold parameter to prepare.py, compare val_bpb with/without filtering.
-**Risk**: Filtering reduces data volume. With a 5-minute budget we only see each token once anyway, so reducing volume may not matter. But if the val set is unfiltered, training on filtered data could hurt.
+### 1. Data quality filtering on climbmix
+**Status**: Investigated -- low priority
+**Finding**: climbmix-400b-shuffle is already curated educational content (likely FineWeb-Edu derived). Quality is high:
+- Only 0.5% of docs < 100 chars, 8.3% < 500 chars
+- <0.2% low alpha ratio, <1.3% repetitive, <0.2% all-caps heavy
+- No URL-heavy spam detected in 5K sample
+
+**Data volume finding**: 12.5x surplus. We have ~126M tokens in 2 training shards but only consume ~10M per 5-min run (epoch=1). This means:
+- Filtering is free (no data starvation risk)
+- But the data is already clean, so simple heuristic filtering won't yield much
+- The val shard is from the same distribution, so training/eval distribution mismatch isn't an issue
+
+**Remaining lever**: Minimum document length filter (skip <500 char docs to reduce BOS overhead and context fragmentation). ~8% of docs affected. Would need either a pre-filtering script or modifying make_dataloader -- but prepare.py is READ ONLY. Options:
+  1. Pre-filter parquet files and replace in cache dir (hacky but works)
+  2. Propose a filter parameter to make_dataloader (requires prepare.py change)
+  3. Skip -- 8% is probably not enough to move val_bpb meaningfully
+
+**Verdict**: climbmix quality is not the bottleneck. Deprioritize simple filtering in favor of more impactful levers (curriculum learning, data mixing).
 
 ## Backlog
 
-### 2. Curriculum learning (data ordering)
+### 2. Download more shards (data diversity)
+**Hypothesis**: We only have 2 training shards of 6,542 available. More shards = more document diversity per training run. Even though we only use ~8% of data per run, the 8% we see is drawn from the same 2 shards every time.
+**Approach**: `uv run prepare.py --num-shards 20` (or more). Measure if val_bpb improves with same training config but more diverse data.
+**Considerations**: Download time, cache disk space. Each shard is ~60MB. 20 shards = ~1.2GB.
+**Priority**: High -- cheapest experiment, zero code changes.
+
+### 3. Curriculum learning (data ordering)
 **Hypothesis**: Ordering training data by difficulty (shorter/simpler first, harder later) could improve convergence speed. The fixed 5-minute budget makes this especially interesting -- early convergence means more useful training at the end.
 **Approach**: Sort documents by perplexity (from a reference model), length, or vocabulary complexity. Train with ordered vs shuffled data.
 **Considerations**: The dataloader currently does best-fit packing with random order. Changing order means modifying prepare.py (READ ONLY constraint -- would need to discuss).
 
-### 3. Token weighting (non-uniform loss)
+### 4. Token weighting (non-uniform loss)
 **Hypothesis**: Not all tokens are equally informative. Weighting loss by token informativeness could improve BPB on the evaluation set.
 **Approach**: Weight loss by token byte count (already available), inverse frequency, or a learned quality signal. The `token_bytes` mask already skips some tokens; extend this to soft weighting.
 **Considerations**: Modifies the loss function in train.py. Must ensure the evaluation metric (val_bpb) is unchanged.
 
-### 4. Data mixing (domain ratios)
+### 5. Data mixing (domain ratios)
 **Hypothesis**: FineWeb is web crawl data with uncontrolled domain distribution. Intentionally mixing domains (code, wiki, books, web) at tuned ratios could improve generalization.
 **Approach**: Categorize FineWeb documents by domain, experiment with mixing ratios.
 **Considerations**: Requires domain classification of training data. May need multiple data shards.
 
-### 5. Tokenizer optimization
+### 6. Tokenizer optimization
 **Hypothesis**: The 8K BPE vocabulary is small by design, but vocabulary composition affects BPB. A vocabulary optimized for the training distribution could improve encoding efficiency.
 **Approach**: Compare current tokenizer against alternatives (different vocab sizes, different BPE training data). Measure both encoding efficiency and downstream val_bpb.
 **Considerations**: Tokenizer is in prepare.py (READ ONLY). Would need careful coordination.
 
-### 6. Deduplication
+### 7. Deduplication
 **Hypothesis**: Near-duplicate documents waste training tokens. Dedup at document or paragraph level could improve effective data diversity per training step.
 **Approach**: MinHash or exact-match dedup on the training data. Compare val_bpb with deduped vs original.
 **Considerations**: FineWeb already has some dedup applied. Additional dedup may have diminishing returns.
