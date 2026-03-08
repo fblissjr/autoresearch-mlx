@@ -30,9 +30,9 @@ log_utils.py     -- Project-wide logging framework (--debug flag support)
 program.md       -- Detailed experiment loop instructions
 tests/           -- Test suite
   test_optimizations.py  -- Tests for mx.compile, eval batch, step-based LR schedule
-data/            -- Output files (charts, analysis artifacts)
-internal/        -- Not committed. Design notes, session logs
-  log/           -- Session logs (log_YYYY-MM-DD.md)
+data/            -- Output files (charts, analysis artifacts). Tracked via .gitkeep, contents gitignored.
+internal/        -- Research notes and session logs. Committed to git (open research repo).
+  log/           -- Session logs (log_YYYY-MM-DD.md). Document what was done, decisions, and open questions.
 ```
 
 ## Key Files in Detail
@@ -76,6 +76,14 @@ Simple logging framework. Import `logger` and `is_debug`:
 from log_utils import logger, is_debug
 logger.debug("Only shown with --debug")
 ```
+
+## Git and Privacy Conventions
+
+- `AGENTS.md` and `CLAUDE.md` are committed (not gitignored)
+- `internal/log/` is committed -- this is an open research repo, session logs document our process
+- `data/` directory is tracked (via `.gitkeep`) but contents are gitignored
+- **Privacy**: Never include absolute filesystem paths, usernames, or system-specific details in committed files. Keep session logs focused on technical decisions and results.
+- **Benchmarks**: When comparing against other implementations, report numbers factually. Do not disparage other research efforts.
 
 ## Constraints
 

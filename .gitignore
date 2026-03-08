@@ -15,4 +15,5 @@ queue/
 # Experimental code/artifacts
 dev/
 coderef/
-data/
+
+# Data outputs (contents managed by data/.gitignore)
