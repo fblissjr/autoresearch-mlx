@@ -4,7 +4,7 @@ Project-wide logging, diagnostics, and structured output for autoresearch-mlx.
 Usage:
     from log_utils import logger, is_debug
     from log_utils import sample_memory, format_step_timings
-    from log_utils import hardware_info, save_json, build_run_data, build_bench_data
+    from log_utils import hardware_info, save_json, build_bench_data, FORMAT_VERSION
 
 Enable debug mode by passing --debug flag to any script, or setting
 the AUTORESEARCH_DEBUG=1 environment variable.
@@ -104,50 +104,6 @@ def save_json(prefix, data):
         f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
     print(f"Results saved to {out_path}")
     return out_path
-
-
-def build_run_data(*, config, config_dict, param_counts, num_params, depth,
-                   time_budget, total_training_time, total_seconds,
-                   step, total_tokens, avg_tok_sec, peak_memory_mb,
-                   optimizer_groups, compiled, batch_size, total_batch_size,
-                   dmodel_scale, val_bpb, vocab_size, step_timings):
-    """Build the structured run JSON dict."""
-    return {
-        "format_version": FORMAT_VERSION,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "hardware": hardware_info(),
-        "model": {
-            "depth": depth,
-            "n_embd": config.n_embd,
-            "params": num_params,
-            "vocab_size": vocab_size,
-            "config": config_dict,
-            "param_counts": param_counts,
-        },
-        "training": {
-            "budget_seconds": time_budget,
-            "actual_seconds": round(total_training_time, 1),
-            "total_seconds": round(total_seconds, 1),
-            "total_steps": step,
-            "total_tokens": total_tokens,
-            "avg_tok_sec": avg_tok_sec,
-            "peak_memory_mb": round(peak_memory_mb, 1),
-            "optimizer_groups": optimizer_groups,
-            "compiled": compiled,
-            "batch_size": batch_size,
-            "total_batch_size": total_batch_size,
-            "dmodel_scale": round(dmodel_scale, 4),
-        },
-        "result": {
-            "val_bpb": round(val_bpb, 6),
-        },
-        "data": {
-            "source": "climbmix-400b-shuffle",
-            "filtering": "none",
-            "tokenizer": f"bpe-{vocab_size}",
-        },
-        "step_timings": format_step_timings(step_timings),
-    }
 
 
 def build_bench_data(configs):

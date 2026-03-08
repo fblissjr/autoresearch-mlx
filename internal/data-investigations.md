@@ -67,45 +67,46 @@ Implemented in `train.py` and `bench_compare.py`. Both write structured JSON to 
 ```json
 {
   "format_version": "0.1",
-  "timestamp": "2026-03-08T14:39:00",
+  "timestamp": "<ISO 8601 string>",
   "hardware": {
-    "chip": "arm",
+    "chip": "<string>",
     "memory_gb": null,
-    "os": "Darwin"
+    "os": "<string>"
   },
   "model": {
-    "depth": 8,
-    "n_embd": 512,
-    "params": 50332176,
-    "vocab_size": 32768,
+    "depth": "<int>",
+    "n_embd": "<int>",
+    "params": "<int>",
+    "vocab_size": "<int>",
     "config": { "...full GPTConfig as dict..." },
-    "param_counts": { "wte": 16777216, "...": "..." }
+    "param_counts": { "wte": "<int>", "...": "..." }
   },
   "training": {
-    "budget_seconds": 300,
-    "actual_seconds": 302.1,
-    "total_seconds": 741.0,
-    "total_steps": 154,
-    "total_tokens": 10092544,
-    "avg_tok_sec": 33423,
-    "peak_memory_mb": 64844.1,
-    "optimizer_groups": 5,
-    "compiled": true,
-    "batch_size": 32,
-    "total_batch_size": 65536,
-    "dmodel_scale": 1.2247
+    "budget_seconds": "<int>",
+    "actual_seconds": "<float>",
+    "total_seconds": "<float>",
+    "total_steps": "<int>",
+    "total_tokens": "<int>",
+    "avg_tok_sec": "<int>",
+    "training_peak_mb": "<float>  (peak during compiled training phase only)",
+    "peak_memory_mb": "<float>  (overall peak including eval)",
+    "optimizer_groups": "<int>",
+    "compiled": "<bool>",
+    "batch_size": "<int>",
+    "total_batch_size": "<int>",
+    "dmodel_scale": "<float>"
   },
   "result": {
-    "val_bpb": 1.8999
+    "val_bpb": "<float>"
   },
   "data": {
     "source": "climbmix-400b-shuffle",
     "filtering": "none",
-    "tokenizer": "bpe-32768"
+    "tokenizer": "bpe-<vocab_size>"
   },
   "step_timings": [
-    {"step": 11, "dt": 1.6823, "tok_sec": 38955, "loss": 7.123456},
-    {"step": 20, "dt": 1.6701, "tok_sec": 39239, "loss": 6.543210, "active_mb": 52100.0, "peak_mb": 53200.0},
+    {"step": "<int>", "dt": "<float>", "tok_sec": "<int>", "loss": "<float>"},
+    {"step": "<int>", "dt": "<float>", "tok_sec": "<int>", "loss": "<float>", "active_mb": "<float>", "peak_mb": "<float>"},
     "... every step has (step, dt, tok_sec, loss); every 10th step adds (active_mb, peak_mb) ..."
   ]
 }

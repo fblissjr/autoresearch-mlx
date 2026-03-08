@@ -62,6 +62,20 @@ data/           - output files (charts, analysis artifacts)
 internal/log/   - session-by-session development notes
 ```
 
+## Current results (v0.5.2)
+
+Tested on M2 Ultra, 192GB unified memory. 5-minute training budget, 50M parameter GPT with value embeddings.
+
+| Metric | Value |
+|--------|-------|
+| val_bpb | 1.886 |
+| Training steps | 193 |
+| Avg throughput | 41,931 tok/sec |
+| Training peak memory | 49.4 GB |
+| Total time (train + eval) | 702.5s |
+
+5-group MultiOptimizer (Muon for matrix weights, AdamW for embeddings/scalars/head), compiled training via `mx.compile`, 20 data shards for diversity.
+
 ## License
 
 MIT

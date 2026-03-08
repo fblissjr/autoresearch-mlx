@@ -14,7 +14,9 @@ import mlx.nn as nn
 import mlx.optimizers as optim
 from mlx.utils import tree_map, tree_flatten
 
-from log_utils import sample_memory, build_run_data, save_json
+from log_utils import (
+    sample_memory, save_json, hardware_info, format_step_timings, FORMAT_VERSION,
+)
 from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
 
 # ---------------------------------------------------------------------------
@@ -573,6 +575,7 @@ if __name__ == "__main__":
     print()  # newline after \r training log
 
     total_tokens = step * TOTAL_BATCH_SIZE
+    training_peak_mb = mx.get_peak_memory() / 1024 / 1024
 
     # Free optimizer state before eval to reduce memory pressure
     # (optimizer momentum/variance buffers ~10GB with 5 groups)
@@ -597,6 +600,7 @@ if __name__ == "__main__":
     print(f"val_bpb:          {val_bpb:.6f}")
     print(f"training_seconds: {total_training_time:.1f}")
     print(f"total_seconds:    {t_end - t_start:.1f}")
+    print(f"train_peak_mb:    {training_peak_mb:.1f}")
     print(f"peak_memory_mb:   {peak_mem_mb:.1f}")
     print(f"total_tokens_M:   {total_tokens / 1e6:.1f}")
     print(f"avg_tok_sec:      {avg_tok_sec:,}")
@@ -606,14 +610,41 @@ if __name__ == "__main__":
     print(f"dmodel_scale:     {dmodel_scale:.4f}")
 
     # Save results to data/
-    run_data = build_run_data(
-        config=config, config_dict=asdict(config), param_counts=param_counts,
-        num_params=num_params, depth=DEPTH, time_budget=TIME_BUDGET,
-        total_training_time=total_training_time, total_seconds=t_end - t_start,
-        step=step, total_tokens=total_tokens, avg_tok_sec=avg_tok_sec,
-        peak_memory_mb=peak_mem_mb, optimizer_groups=5,
-        compiled=grad_accum_steps == 1, batch_size=DEVICE_BATCH_SIZE,
-        total_batch_size=TOTAL_BATCH_SIZE, dmodel_scale=dmodel_scale,
-        val_bpb=val_bpb, vocab_size=config.vocab_size, step_timings=step_timings,
-    )
+    run_data = {
+        "format_version": FORMAT_VERSION,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "hardware": hardware_info(),
+        "model": {
+            "depth": DEPTH,
+            "n_embd": config.n_embd,
+            "params": num_params,
+            "vocab_size": config.vocab_size,
+            "config": asdict(config),
+            "param_counts": param_counts,
+        },
+        "training": {
+            "budget_seconds": TIME_BUDGET,
+            "actual_seconds": round(total_training_time, 1),
+            "total_seconds": round(t_end - t_start, 1),
+            "total_steps": step,
+            "total_tokens": total_tokens,
+            "avg_tok_sec": avg_tok_sec,
+            "training_peak_mb": round(training_peak_mb, 1),
+            "peak_memory_mb": round(peak_mem_mb, 1),
+            "optimizer_groups": 5,
+            "compiled": grad_accum_steps == 1,
+            "batch_size": DEVICE_BATCH_SIZE,
+            "total_batch_size": TOTAL_BATCH_SIZE,
+            "dmodel_scale": round(dmodel_scale, 4),
+        },
+        "result": {
+            "val_bpb": round(val_bpb, 6),
+        },
+        "data": {
+            "source": "climbmix-400b-shuffle",
+            "filtering": "none",
+            "tokenizer": f"bpe-{config.vocab_size}",
+        },
+        "step_timings": format_step_timings(step_timings),
+    }
     save_json("run", run_data)

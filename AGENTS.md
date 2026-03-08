@@ -78,11 +78,11 @@ Logging, diagnostics, and output formatting utilities. Keep `train.py` and `prep
 
 ```python
 from log_utils import logger, is_debug, sample_memory, format_step_timings
-from log_utils import hardware_info, save_json, build_run_data, build_bench_data
+from log_utils import hardware_info, save_json, build_bench_data, FORMAT_VERSION
 
 logger.debug("Only shown with --debug")
 active_mb, peak_mb = sample_memory(step)  # periodic memory sampling
-save_json("run", build_run_data(...))     # structured JSON output
+save_json("run", run_data)                # structured JSON output (dict built inline in train.py)
 save_json("bench", build_bench_data(...)) # structured JSON output
 ```
 
@@ -109,9 +109,9 @@ save_json("bench", build_bench_data(...)) # structured JSON output
 ## Hardware
 
 - Target: M2 Ultra, 192GB unified memory
-- ~46K tok/sec with compiled training (was ~39K uncompiled)
-- DEVICE_BATCH_SIZE=32 uses ~53GB peak memory
-- DEVICE_BATCH_SIZE=64 crashes (under investigation)
+- ~40K tok/sec compiled training (flat throughout, no regression with 20 shards)
+- DEVICE_BATCH_SIZE=32 uses ~49GB peak memory (training), ~63GB overall (eval at batch=64)
+- DEVICE_BATCH_SIZE=64 crashes during training (under investigation)
 
 ## MLX Framework Notes
 

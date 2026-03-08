@@ -1,11 +1,18 @@
 # Changelog
 
+## 0.5.3
+
+- Remove `build_run_data` from log_utils.py (zero-value 20-kwarg wrapper); inline dict in train.py
+- Add `training_peak_mb` capture before optimizer cleanup to separate training vs eval memory peaks
+- Fix data-investigations.md schema examples: replace fake numbers with type placeholders
+- Document v0.5.2 training results (val_bpb 1.886, 193 steps, 42K tok/sec, no throughput regression)
+
 ## 0.5.2
 
 - Free optimizer state before eval: delete all 5 optimizer groups and compiled_step closure, re-enable GC, clear MLX cache
 - Add memory diagnostics: periodic active/peak memory sampling in step_timings via log_utils.sample_memory()
 - Reset peak memory at compiled phase start for phase-isolated measurement
-- Move structured JSON output (build_run_data, save_json, hardware_info) from train.py to log_utils.py
+- Move structured JSON output (save_json, hardware_info) from train.py to log_utils.py
 - Remove inline orjson/platform/os imports from train.py (now handled by log_utils)
 - Download 20 data shards (up from 3) for 10x document diversity
 - Add code organization convention to AGENTS.md: keep core scripts thin, utilities in log_utils.py
