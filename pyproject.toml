@@ -1,6 +1,6 @@
 [project]
 name = "autoresearch"
-version = "0.5.0"
+version = "0.5.1"
 description = "MLX port of karpathy's autoresearch"
 readme = "README.md"
 requires-python = ">=3.10"

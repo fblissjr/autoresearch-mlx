@@ -58,43 +58,74 @@ The baseline autoresearch approach is algorithm-driven: optimize the model archi
 **Approach**: MinHash or exact-match dedup on the training data. Compare val_bpb with deduped vs original.
 **Considerations**: FineWeb already has some dedup applied. Additional dedup may have diminishing returns.
 
-## Proposed: Common Benchmark Output Format
+## Implemented: Structured Output Format (v0.1)
 
-For cross-repo/cross-hardware comparison, we write structured JSON to `data/`. This is one possible format -- not a standard, just a starting point for data-driven comparison across experiments and forks.
+Implemented in `train.py` and `bench_compare.py`. Both write structured JSON to `data/` with the following schema:
+
+### Run output (`data/run_*.json`)
 
 ```json
 {
   "format_version": "0.1",
   "timestamp": "2026-03-08T14:39:00",
   "hardware": {
-    "chip": "M2 Ultra",
-    "memory_gb": 192,
-    "os": "macOS"
+    "chip": "arm",
+    "memory_gb": null,
+    "os": "Darwin"
   },
   "model": {
     "depth": 8,
     "n_embd": 512,
     "params": 50332176,
-    "vocab_size": 8192
+    "vocab_size": 32768,
+    "config": { "...full GPTConfig as dict..." },
+    "param_counts": { "wte": 16777216, "...": "..." }
   },
   "training": {
     "budget_seconds": 300,
-    "actual_seconds": 300.0,
-    "total_steps": 189,
-    "total_tokens": 12386304,
-    "avg_tok_sec": 41287,
+    "actual_seconds": 302.1,
+    "total_seconds": 741.0,
+    "total_steps": 154,
+    "total_tokens": 10092544,
+    "avg_tok_sec": 33423,
+    "peak_memory_mb": 64844.1,
     "optimizer_groups": 5,
     "compiled": true,
-    "batch_size": 32
+    "batch_size": 32,
+    "total_batch_size": 65536,
+    "dmodel_scale": 1.2247
   },
   "result": {
-    "val_bpb": 2.28
+    "val_bpb": 1.8999
   },
   "data": {
-    "source": "fineweb",
+    "source": "climbmix-400b-shuffle",
     "filtering": "none",
-    "tokenizer": "bpe-8k"
-  }
+    "tokenizer": "bpe-32768"
+  },
+  "step_timings": [
+    {"step": 11, "dt": 1.6823, "tok_sec": 38955, "loss": 7.123456},
+    "... one entry per compiled-phase step ..."
+  ]
+}
+```
+
+The `step_timings` array enables post-hoc throughput regression analysis without re-running training. Only compiled-phase steps are recorded (warmup steps excluded).
+
+### Bench output (`data/bench_*.json`)
+
+```json
+{
+  "format_version": "0.1",
+  "timestamp": "2026-03-08T14:39:00",
+  "hardware": { "chip": "arm", "memory_gb": null, "os": "Darwin" },
+  "configs": [
+    {
+      "label": "D=4 B=16",
+      "ours": { "fwd": { "avg_ms": 205.9, "avg_tok_sec": 159154 }, "full": { "..." }, "params": 12345678, "peak_mb": 10884 },
+      "ext": null
+    }
+  ]
 }
 ```
 

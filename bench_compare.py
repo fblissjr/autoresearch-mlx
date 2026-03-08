@@ -11,6 +11,7 @@ Usage:
 import argparse
 import importlib
 import os
+import platform
 import sys
 import time
 
@@ -354,10 +355,20 @@ def main():
             print()
 
     # Save results to data/
+    bench_data = {
+        "format_version": "0.1",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "hardware": {
+            "chip": platform.processor() or "Apple Silicon",
+            "memory_gb": None,
+            "os": platform.system(),
+        },
+        "configs": all_results,
+    }
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     out_path = os.path.join("data", f"bench_{timestamp}.json")
     with open(out_path, "wb") as f:
-        f.write(orjson.dumps(all_results, option=orjson.OPT_INDENT_2))
+        f.write(orjson.dumps(bench_data, option=orjson.OPT_INDENT_2))
     print(f"Results saved to {out_path}")
 
 

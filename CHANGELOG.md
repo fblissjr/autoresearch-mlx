@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Structured JSON output: restructure run/bench JSON from flat dict to nested format with format_version, hardware, model, training, result, data blocks
+- Add per-step timing collection (step_timings array) to run JSON for throughput regression analysis
+- Add platform metadata (chip, os) to both run and bench output
+
 ## 0.5.0
 
 - Per-param LR groups: expand MultiOptimizer from 2 to 5 groups matching baseline PyTorch config

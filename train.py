@@ -6,6 +6,7 @@ Usage: uv run train.py
 
 import gc
 import os
+import platform
 import time
 from dataclasses import dataclass, asdict
 from functools import partial
@@ -501,6 +502,7 @@ if __name__ == "__main__":
         return loss
 
     total_training_time = 0
+    step_timings = []  # (step, dt, tok_sec, loss) for compiled-phase steps
 
     while True:
         t0 = time.time()
@@ -539,6 +541,9 @@ if __name__ == "__main__":
         total_training_time += dt
 
         train_loss_f = train_loss_val.item()
+        tok_per_sec_step = int(TOTAL_BATCH_SIZE / dt)
+        step_timings.append((step, round(dt, 4), tok_per_sec_step, round(train_loss_f, 6)))
+
         if train_loss_f > 100:
             print("FAIL")
             exit(1)
@@ -548,10 +553,9 @@ if __name__ == "__main__":
         debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1))
         progress = min(total_training_time / TIME_BUDGET, 1.0)
         pct_done = 100 * progress
-        tok_per_sec = int(TOTAL_BATCH_SIZE / dt)
         remaining = max(0, TIME_BUDGET - total_training_time)
 
-        print(f"\rstep {step:05d} ({pct_done:.1f}%) | loss: {debiased_smooth_loss:.6f} | dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec:,} | epoch: {epoch} | remaining: {remaining:.0f}s    ", end="", flush=True)
+        print(f"\rstep {step:05d} ({pct_done:.1f}%) | loss: {debiased_smooth_loss:.6f} | dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec_step:,} | epoch: {epoch} | remaining: {remaining:.0f}s    ", end="", flush=True)
 
         if (step + 1) % 5000 == 0:
             gc.collect()
@@ -589,26 +593,52 @@ if __name__ == "__main__":
     print(f"dmodel_scale:     {dmodel_scale:.4f}")
 
     # Save results to data/
+    timestamp_iso = time.strftime("%Y-%m-%dT%H:%M:%S")
     run_data = {
-        "val_bpb": round(val_bpb, 6),
-        "training_seconds": round(total_training_time, 1),
-        "total_seconds": round(t_end - t_start, 1),
-        "peak_memory_mb": round(peak_mem_mb, 1),
-        "total_tokens": total_tokens,
-        "avg_tok_sec": avg_tok_sec,
-        "num_steps": step,
-        "num_params": num_params,
-        "depth": DEPTH,
-        "n_embd": config.n_embd,
-        "dmodel_scale": round(dmodel_scale, 4),
-        "batch_size": DEVICE_BATCH_SIZE,
-        "total_batch_size": TOTAL_BATCH_SIZE,
-        "optimizer_groups": 5,
-        "config": asdict(config),
-        "param_counts": param_counts,
+        "format_version": "0.1",
+        "timestamp": timestamp_iso,
+        "hardware": {
+            "chip": platform.processor() or "Apple Silicon",
+            "memory_gb": None,
+            "os": platform.system(),
+        },
+        "model": {
+            "depth": DEPTH,
+            "n_embd": config.n_embd,
+            "params": num_params,
+            "vocab_size": config.vocab_size,
+            "config": asdict(config),
+            "param_counts": param_counts,
+        },
+        "training": {
+            "budget_seconds": TIME_BUDGET,
+            "actual_seconds": round(total_training_time, 1),
+            "total_seconds": round(t_end - t_start, 1),
+            "total_steps": step,
+            "total_tokens": total_tokens,
+            "avg_tok_sec": avg_tok_sec,
+            "peak_memory_mb": round(peak_mem_mb, 1),
+            "optimizer_groups": 5,
+            "compiled": grad_accum_steps == 1,
+            "batch_size": DEVICE_BATCH_SIZE,
+            "total_batch_size": TOTAL_BATCH_SIZE,
+            "dmodel_scale": round(dmodel_scale, 4),
+        },
+        "result": {
+            "val_bpb": round(val_bpb, 6),
+        },
+        "data": {
+            "source": "climbmix-400b-shuffle",
+            "filtering": "none",
+            "tokenizer": f"bpe-{config.vocab_size}",
+        },
+        "step_timings": [
+            {"step": s, "dt": dt, "tok_sec": ts, "loss": l}
+            for s, dt, ts, l in step_timings
+        ],
     }
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    out_path = os.path.join("data", f"run_{timestamp}.json")
+    timestamp_file = time.strftime("%Y%m%d_%H%M%S")
+    out_path = os.path.join("data", f"run_{timestamp_file}.json")
     with open(out_path, "wb") as f:
         f.write(orjson.dumps(run_data, option=orjson.OPT_INDENT_2))
     print(f"Results saved to {out_path}")
