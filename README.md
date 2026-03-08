@@ -76,6 +76,13 @@ Tested on M2 Ultra, 192GB unified memory. 5-minute training budget, 50M paramete
 
 5-group MultiOptimizer (Muon for matrix weights, AdamW for embeddings/scalars/head), compiled training via `mx.compile`, 20 data shards for diversity.
 
+## Documentation
+
+- [internal/analysis/2026-03-08_prepare-py-conformance.md](internal/analysis/2026-03-08_prepare-py-conformance.md) -- line-by-line verification that our MLX `prepare.py` matches the PyTorch/CUDA reference
+- [internal/data-investigations.md](internal/data-investigations.md) -- data quality investigation backlog and structured output schema
+- [internal/analysis/](internal/analysis/) -- throughput regression and eval bottleneck analyses
+- [internal/log/](internal/log/) -- session-by-session development notes
+
 ## License
 
 MIT

@@ -157,9 +157,12 @@ save_json("bench", build_bench_data(...)) # structured JSON output
 - **Weight decay**: Fixed at 0.2 (reference decays as `WD * (1-progress)`). Same mx.compile limitation.
 - **Session logging**: Update `internal/log/log_YYYY-MM-DD.md` every iteration with what was done, decisions made, and open questions.
 
-## Data Investigations
+## Analysis & Investigations
 
-See [internal/data-investigations.md](internal/data-investigations.md) for the backlog of data quality levers under investigation. The current approach is purely algorithm-driven; data quality is an underexplored lever.
+- [internal/data-investigations.md](internal/data-investigations.md) -- data quality levers backlog (currently deprioritized; climbmix quality is high)
+- [internal/analysis/2026-03-08_prepare-py-conformance.md](internal/analysis/2026-03-08_prepare-py-conformance.md) -- line-by-line verification that our MLX prepare.py matches the PyTorch/CUDA reference
+- [internal/analysis/2026-03-08_eval-bottleneck.md](internal/analysis/2026-03-08_eval-bottleneck.md) -- eval takes 2x longer than projected; root cause is Metal allocator fragmentation
+- [internal/analysis/2026-03-08_throughput-regression.md](internal/analysis/2026-03-08_throughput-regression.md) -- throughput regression analysis (resolved: data cycling with 3 shards)
 
 ## Experiment Workflow
 
