@@ -30,9 +30,12 @@ log_utils.py     -- Project-wide logging framework (--debug flag support)
 program.md       -- Detailed experiment loop instructions
 tests/           -- Test suite
   test_optimizations.py  -- Tests for mx.compile, eval batch, step-based LR schedule
-data/            -- Output files (charts, analysis artifacts). Tracked via .gitkeep, contents gitignored.
+data/            -- Output files (run results, bench results, analysis). Tracked via .gitkeep, contents gitignored.
+  run_*.json     -- Training run results (val_bpb, tok/sec, memory, config)
+  bench_*.json   -- Benchmark results (fwd+bwd, full step timing)
 internal/        -- Research notes and session logs. Committed to git (open research repo).
   log/           -- Session logs (log_YYYY-MM-DD.md). Document what was done, decisions, and open questions.
+  data-investigations.md -- Backlog of data quality improvement ideas
 ```
 
 ## Key Files in Detail
@@ -143,6 +146,10 @@ logger.debug("Only shown with --debug")
 - **Muon momentum**: Fixed at 0.95 (reference ramps 0.85->0.95 over 300 steps). Deliberate simplification for mx.compile compatibility.
 - **Weight decay**: Fixed at 0.2 (reference decays as `WD * (1-progress)`). Same mx.compile limitation.
 - **Session logging**: Update `internal/log/log_YYYY-MM-DD.md` every iteration with what was done, decisions made, and open questions.
+
+## Data Investigations
+
+See [internal/data-investigations.md](internal/data-investigations.md) for the backlog of data quality levers under investigation. The current approach is purely algorithm-driven; data quality is an underexplored lever.
 
 ## Experiment Workflow
 
