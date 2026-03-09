@@ -22,6 +22,13 @@ uv run prepare.py
 uv run train.py
 ```
 
+For TinyStories (smaller dataset, faster iteration, good for smaller machines):
+
+```bash
+uv run prepare.py --dataset tinystories
+# Then set DATASET = "tinystories" in train.py before running
+```
+
 ## MLX optimization approach
 
 MLX-specific optimizations in this port draw on patterns documented in [mlx-skills](https://github.com/fblissjr/mlx-skills/), a collection of MLX optimization knowledge for Apple Silicon ML development. Key techniques: `mx.compile` with state tracking, `mx.fast` ops, cache management for masks/norms, and MultiOptimizer (Muon + AdamW) for mixed-optimizer training.
@@ -38,6 +45,7 @@ Development session logs are in `internal/log/` for transparency.
 - Numpy-based data packing with `mx.array` conversion at yield time
 - No device management (unified memory on Apple Silicon)
 - Batch sizes tuned for Apple Silicon memory constraints
+- Multi-dataset support via `data_sources.py` (climbmix default, TinyStories for smaller machines)
 
 ## Running the agent
 
@@ -51,7 +59,8 @@ Hi have a look at program.md and let's kick off a new experiment! let's do the s
 
 ```
 train.py        - model, optimizer, training loop (agent modifies this)
-prepare.py      - constants, data prep + runtime utilities (do not modify)
+prepare.py      - data prep, tokenizer, dataloader, evaluate_bpb (minimize changes)
+data_sources.py - dataset registry and configuration (multi-dataset support)
 bench.py        - performance profiling (compiled vs uncompiled, per-phase timing)
 analysis.py     - experiment results analysis
 log_utils.py    - project-wide logging framework (--debug flag support)
@@ -76,33 +85,30 @@ Tested on M2 Ultra, 192GB unified memory. 5-minute training budget, 50M paramete
 
 5-group MultiOptimizer (Muon for matrix weights, AdamW for embeddings/scalars/head), compiled training via `mx.compile`, 20 data shards for diversity.
 
+v0.6.0 resets the baseline to DEPTH=4 (from 8) for more training steps in the 5-minute budget. New baseline results pending.
+
 ## Documentation
 
 - [internal/analysis/2026-03-08_prepare-py-conformance.md](internal/analysis/2026-03-08_prepare-py-conformance.md) -- line-by-line verification that our MLX `prepare.py` matches the PyTorch/CUDA reference
 - [internal/data-investigations.md](internal/data-investigations.md) -- data quality investigation backlog and structured output schema
 - [internal/analysis/](internal/analysis/) -- throughput regression and eval bottleneck analyses
-- [internal/log/](internal/log/) -- session-by-session development notes\
+- [internal/log/](internal/log/) -- session-by-session development notes
 
-## Platform support
+## Tuning for smaller machines
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+If you're running on a MacBook or other smaller Apple Silicon machine, here are the main knobs:
 
-Seeing as there seems to be a lot of interest in tinkering with autoresearch on much smaller compute platforms than an H100, a few extra words. If you're going to try running autoresearch on smaller computers (Macbooks etc.), I'd recommend one of the forks below. On top of this, here are some recommendations for how to tune the defaults for much smaller models for aspiring forks:
-
-1. To get half-decent results I'd use a dataset with a lot less entropy, e.g. this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean). These are GPT-4 generated short stories. Because the data is a lot narrower in scope, you will see reasonable results with a lot smaller models (if you try to sample from them after training).
-2. You might experiment with decreasing `vocab_size`, e.g. from 8192 down to 4096, 2048, 1024, or even - simply byte-level tokenizer with 256 possibly bytes after utf-8 encoding.
-3. In `prepare.py`, you'll want to lower `MAX_SEQ_LEN` a lot, depending on the computer even down to 256 etc. As you lower `MAX_SEQ_LEN`, you may want to experiment with increasing `DEVICE_BATCH_SIZE` in `train.py` slightly to compensate. The number of tokens per fwd/bwd pass is the product of these two.
-4. Also in `prepare.py`, you'll want to decrease `EVAL_TOKENS` so that your validation loss is evaluated on a lot less data.
-5. In `train.py`, the primary single knob that controls model complexity is the `DEPTH` (default 8, here). A lot of variables are just functions of this, so e.g. lower it down to e.g. 4.
-6. You'll want to most likely use `WINDOW_PATTERN` of just "L", because "SSSL" uses alternating banded attention pattern that may be very inefficient for you. Try it.
-7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
-
-I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+1. **Use TinyStories**: `uv run prepare.py --dataset tinystories`, then set `DATASET = "tinystories"` in `train.py`. Lower entropy data gives reasonable results with much smaller models.
+2. **Add a new dataset**: Add an entry to the `DATASETS` dict in `data_sources.py` with appropriate `vocab_size`, `max_seq_len`, and `eval_tokens`. Run `uv run prepare.py --dataset <name>`.
+3. **Lower DEPTH** in `train.py` (default 4). This is the primary model complexity knob -- model_dim, head count, and parameter count all derive from it.
+4. **Adjust DEVICE_BATCH_SIZE** in `train.py`. The number of tokens per fwd/bwd pass is `DEVICE_BATCH_SIZE * MAX_SEQ_LEN`.
+5. **Lower TOTAL_BATCH_SIZE** in `train.py`, but keep it a power of 2 (e.g., `2**14` ~16K).
+6. **Try WINDOW_PATTERN = "L"** in `train.py`. The default "SSSL" alternating banded attention may be inefficient on smaller machines.
 
 ## Acknowledgements
 
-- [MLX] -- (https://github.com/ml-explore/mlx)
-- [https://github.com/karpathy/autoresearch](https://github.com/karpathy/autoresearch) -- the OG
+- [MLX](https://github.com/ml-explore/mlx)
+- [karpathy/autoresearch](https://github.com/karpathy/autoresearch) -- the OG
 - [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) -- another MLX port whose findings on DEPTH=4 and hyperparameter tuning informed our baseline reset in v0.6.0.
 
 ## License
