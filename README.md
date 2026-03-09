@@ -101,6 +101,7 @@ I think these would be the reasonable hyperparameters to play with. Ask your fav
 
 ## Acknowledgements
 
+- [https://github.com/karpathy/autoresearch] -- the OG
 - [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) -- another MLX port whose findings on DEPTH=4 and hyperparameter tuning informed our baseline reset in v0.6.0.
 
 ## License
