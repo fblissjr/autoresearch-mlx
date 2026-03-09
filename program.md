@@ -24,6 +24,7 @@ Each experiment runs on a single GPU. The training script runs for a **fixed tim
 
 **What you CAN do:**
 - Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+- Change `DATASET` in `train.py` to switch between prepared datasets (e.g., `"climbmix"`, `"tinystories"`). Run `uv run prepare.py --dataset <name>` first to prepare data.
 
 **What you CANNOT do:**
 - Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, tokenizer, and training constants (time budget, sequence length, etc).

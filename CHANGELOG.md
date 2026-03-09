@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- Multi-dataset support: add `data_sources.py` with dataset registry and `configure_dataset()` function
+- Support for TinyStories dataset (`uv run prepare.py --dataset tinystories`)
+- Per-dataset cache directories (`~/.cache/autoresearch/{dataset}/`)
+- Baseline reset: DEPTH=4 (from 8), DEVICE_BATCH_SIZE=16 (from 32), WARMUP_STEPS=5 (from 11)
+- Add DATASET constant to train.py for dataset selection
+- Minimal prepare.py changes: `--dataset` CLI flag, deferred default in `Tokenizer.from_directory`
+- Add hardware info to CLAUDE.md
+
 ## 0.5.4
 
 - Reduce EVAL_BATCH_SIZE from 64 to 32 to avoid 14GB memory surge in fragmented Metal allocator post-training

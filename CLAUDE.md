@@ -1,5 +1,9 @@
 See [AGENTS.md](AGENTS.md) for full project context.
 
+## Hardware
+
+- Mac Studio M2 Ultra, 192GB unified memory
+
 ## Session Logging (Required)
 
 After every commit, update `internal/log/log_YYYY-MM-DD.md` (today's date) with what was done. This is a blocking requirement -- do not skip it. Each entry should include:

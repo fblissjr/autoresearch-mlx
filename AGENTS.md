@@ -1,4 +1,4 @@
-last updated: 2026-03-08
+last updated: 2026-03-09
 
 # AGENTS.md
 
@@ -12,7 +12,8 @@ Autonomous ML research framework that trains GPT models using MLX on Apple Silic
 
 | Task | Command |
 |------|---------|
-| Prepare data | `uv run prepare.py` |
+| Prepare data (climbmix) | `uv run prepare.py` |
+| Prepare data (tinystories) | `uv run prepare.py --dataset tinystories` |
 | Train (5 min) | `uv run train.py` |
 | Benchmark | `uv run bench.py` |
 | Run tests | `uv run python -m pytest tests/` or `uv run python tests/test_optimizations.py` |
@@ -23,7 +24,8 @@ Autonomous ML research framework that trains GPT models using MLX on Apple Silic
 
 ```
 train.py         -- Model + training loop (the ONLY file the agent edits during experiments)
-prepare.py       -- READ ONLY. Data prep, tokenizer, dataloader, evaluate_bpb
+prepare.py       -- Data prep, tokenizer, dataloader, evaluate_bpb (minimize changes, keep aligned with upstream)
+data_sources.py  -- Dataset registry and configuration (multi-dataset support)
 bench.py         -- Performance profiling (compiled vs uncompiled, per-phase timing)
 analysis.py      -- Experiment results analysis (reads results.tsv, outputs charts)
 log_utils.py     -- Project-wide logging framework (--debug flag support)
@@ -55,12 +57,22 @@ The only file modified during experiment runs. Contains:
 
 The `__main__` guard allows importing model classes and constants (GPT, GPTConfig, loss_fn, hyperparams) without triggering training.
 
-### prepare.py (READ ONLY)
+### prepare.py (minimize changes)
 
-- **Constants**: `MAX_SEQ_LEN=2048`, `TIME_BUDGET=300`, `EVAL_TOKENS`
-- **Tokenizer**: BPE via rustbpe/tiktoken, cached at `~/.cache/autoresearch/`
+- **Constants**: `MAX_SEQ_LEN`, `TIME_BUDGET=300`, `EVAL_TOKENS` -- set by `configure_dataset()` from data_sources.py
+- **Tokenizer**: BPE via rustbpe/tiktoken, cached at `~/.cache/autoresearch/{dataset}/`
 - **make_dataloader**: BOS-aligned packing with best-fit, numpy buffer -> mx.array
 - **evaluate_bpb**: Fixed evaluation metric (DO NOT CHANGE). Uses `reduction='none'` and token byte counts
+
+### data_sources.py
+
+Dataset registry for multi-dataset support. Keeps prepare.py aligned with upstream.
+
+- **DATASETS**: Registry dict with per-dataset config (hf_repo, vocab_size, max_seq_len, eval_tokens, etc.)
+- **configure_dataset(name)**: Updates prepare.py module globals for selected dataset. Returns config dict.
+- **download_and_shard_dataset()**: Downloads non-pre-sharded HF datasets and creates local parquet shards.
+- Supported datasets: `climbmix` (default, pre-sharded on HF), `tinystories` (downloaded and sharded locally)
+- To add a new dataset: add an entry to `DATASETS` dict, run `uv run prepare.py --dataset <name>`
 
 Numpy usage in prepare.py is intentional: CPU-side data packing in `make_dataloader` uses a numpy buffer (`row_buffer`) for efficient token packing, converting to `mx.array` once per batch yield. No numpy in the training hot path.
 
@@ -109,13 +121,15 @@ save_json("bench", build_bench_data(...)) # structured JSON output
 - Training runs for exactly 5 minutes (wall clock, excluding startup/compilation)
 - The metric is `val_bpb` (lower is better)
 - The evaluation function in `prepare.py` is the ground truth and must not be changed
+- `prepare.py` should be minimally modified to stay aligned with the upstream reference for eval purposes
+- Dataset configuration lives in `data_sources.py`, not in prepare.py
 
 ## Hardware
 
 - Target: M2 Ultra, 192GB unified memory
 - ~40K tok/sec compiled training (flat throughout, no regression with 20 shards)
-- DEVICE_BATCH_SIZE=32 uses ~49GB peak memory (training), ~63GB overall (eval at batch=64)
-- DEVICE_BATCH_SIZE=64 crashes during training (under investigation)
+- DEPTH=4, DEVICE_BATCH_SIZE=16 is the current baseline (v0.6.0)
+- Previous: DEPTH=8, DEVICE_BATCH_SIZE=32 used ~49GB peak memory
 
 ## MLX Framework Notes
 
@@ -125,7 +139,7 @@ save_json("bench", build_bench_data(...)) # structured JSON output
 - **mx.compile**: Fuses element-wise ops. Use `inputs/outputs` for state tracking. Avoid Python scalar constants that change (causes recompilation).
 - **Type promotion**: Use Python scalars (not `mx.array`) for constants in bf16 code
 
-## Current Optimization State (v0.5.4)
+## Current Optimization State (v0.6.0)
 
 | Optimization | Status | Impact |
 |-------------|--------|--------|
@@ -152,7 +166,7 @@ save_json("bench", build_bench_data(...)) # structured JSON output
 | 4 | AdamW | resid_lambdas | SCALAR_LR * 0.01 * dmodel_scale | (0.8, 0.95) | `is_resid_lambdas` |
 | 5 (fallback) | AdamW | lm_head + ve_gate | UNEMBEDDING_LR * dmodel_scale | (0.8, 0.95) | (default) |
 
-**Note**: `dmodel_scale = (n_embd / 768)^-0.5`. At depth=8 (n_embd=512), dmodel_scale=1.225. The reference implementation does NOT apply dmodel_scale to scalar LRs (groups 3-4); our code does. This is a deliberate deviation -- empirical comparison will determine if it helps smaller models.
+**Note**: `dmodel_scale = (n_embd / 768)^-0.5`. At depth=4 (n_embd=256), dmodel_scale=1.732. At depth=8 (n_embd=512), dmodel_scale=1.225. The reference implementation does NOT apply dmodel_scale to scalar LRs (groups 3-4); our code does.
 
 ## Implementation Notes
 

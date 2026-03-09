@@ -215,7 +215,9 @@ class Tokenizer:
         self.bos_token_id = enc.encode_single_token(BOS_TOKEN)
 
     @classmethod
-    def from_directory(cls, tokenizer_dir=TOKENIZER_DIR):
+    def from_directory(cls, tokenizer_dir=None):
+        if tokenizer_dir is None:
+            tokenizer_dir = TOKENIZER_DIR
         with open(os.path.join(tokenizer_dir, "tokenizer.pkl"), "rb") as f:
             enc = pickle.load(f)
         return cls(enc)
@@ -363,18 +365,28 @@ def evaluate_bpb(model, tokenizer, batch_size):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    from data_sources import DATASETS, configure_dataset, download_and_shard_dataset
+
     parser = argparse.ArgumentParser(description="Prepare data and tokenizer for autoresearch")
+    parser.add_argument("--dataset", default="climbmix", choices=list(DATASETS.keys()),
+                        help="Dataset to prepare (default: climbmix)")
     parser.add_argument("--num-shards", type=int, default=10, help="Number of training shards to download (-1 = all). Val shard is always pinned.")
     parser.add_argument("--download-workers", type=int, default=8, help="Number of parallel download workers")
     args = parser.parse_args()
 
-    num_shards = MAX_SHARD if args.num_shards == -1 else args.num_shards
-
+    ds = configure_dataset(args.dataset)
+    print(f"Dataset: {args.dataset}")
     print(f"Cache directory: {CACHE_DIR}")
     print()
 
     # Step 1: Download data
-    download_data(num_shards, download_workers=args.download_workers)
+    if ds["type"] == "pre_sharded":
+        num_shards = MAX_SHARD if args.num_shards == -1 else args.num_shards
+        download_data(num_shards, download_workers=args.download_workers)
+    else:
+        download_and_shard_dataset(
+            ds["hf_repo"], DATA_DIR, ds.get("num_local_shards", 21)
+        )
     print()
 
     # Step 2: Train tokenizer

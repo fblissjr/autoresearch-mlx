@@ -17,7 +17,9 @@ from mlx.utils import tree_map, tree_flatten
 from log_utils import (
     sample_memory, save_json, hardware_info, format_step_timings, FORMAT_VERSION,
 )
-from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+import prepare
+from prepare import TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+from data_sources import configure_dataset
 
 # ---------------------------------------------------------------------------
 # GPT Model
@@ -263,6 +265,9 @@ class GPT(nn.Module):
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
+# Dataset
+DATASET = "climbmix"    # "climbmix" or "tinystories"
+
 # Model architecture
 ASPECT_RATIO = 64       # model_dim = depth * ASPECT_RATIO
 HEAD_DIM = 128          # target head dimension for attention
@@ -282,19 +287,21 @@ WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
-DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 32   # per-device batch size (tuned for Apple Silicon)
+DEPTH = 4               # number of transformer layers
+DEVICE_BATCH_SIZE = 16   # per-device batch size (smaller = more gradient updates)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
 # ---------------------------------------------------------------------------
 
-def build_model_config(depth, vocab_size):
+def build_model_config(depth, vocab_size, seq_len=None):
+    if seq_len is None:
+        seq_len = prepare.MAX_SEQ_LEN
     base_dim = depth * ASPECT_RATIO
     model_dim = ((base_dim + HEAD_DIM - 1) // HEAD_DIM) * HEAD_DIM
     num_heads = model_dim // HEAD_DIM
     return GPTConfig(
-        sequence_len=MAX_SEQ_LEN, vocab_size=vocab_size,
+        sequence_len=seq_len, vocab_size=vocab_size,
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
         window_pattern=WINDOW_PATTERN,
     )
@@ -311,6 +318,10 @@ def loss_fn(model, x, y):
 if __name__ == "__main__":
     t_start = time.time()
     mx.random.seed(42)
+
+    ds_config = configure_dataset(DATASET)
+    MAX_SEQ_LEN = prepare.MAX_SEQ_LEN
+    print(f"Dataset: {DATASET} (seq_len={MAX_SEQ_LEN}, vocab={ds_config['vocab_size']})")
 
     tokenizer = Tokenizer.from_directory()
     vocab_size = tokenizer.get_vocab_size()
@@ -335,7 +346,7 @@ if __name__ == "__main__":
     assert TOTAL_BATCH_SIZE % tokens_per_fwdbwd == 0
     grad_accum_steps = TOTAL_BATCH_SIZE // tokens_per_fwdbwd
 
-    WARMUP_STEPS = 11  # uncompiled steps to absorb graph compilation overhead
+    WARMUP_STEPS = 5   # uncompiled steps to absorb graph compilation overhead
     EVAL_BATCH_SIZE = 32  # match training batch; batch=64 causes 14GB memory surge post-training
 
     train_loader = make_dataloader(tokenizer, DEVICE_BATCH_SIZE, MAX_SEQ_LEN, "train")
@@ -459,8 +470,9 @@ if __name__ == "__main__":
     # Phase 2: Compiled training with step-based LR schedule
     # -----------------------------------------------------------------------
 
-    # Estimate total steps from steady-state step times (skip first 4 for compilation)
-    steady_times = warmup_step_times[4:]
+    # Estimate total steps from steady-state step times (skip compilation steps)
+    skip = min(4, len(warmup_step_times) - 1)
+    steady_times = warmup_step_times[skip:] if warmup_step_times else warmup_step_times
     avg_step_time = sum(steady_times) / len(steady_times)
     estimated_total_steps = int(TIME_BUDGET / avg_step_time) + WARMUP_STEPS
     remaining_steps = estimated_total_steps - WARMUP_STEPS
@@ -641,7 +653,8 @@ if __name__ == "__main__":
             "val_bpb": round(val_bpb, 6),
         },
         "data": {
-            "source": "climbmix-400b-shuffle",
+            "dataset": DATASET,
+            "source": ds_config.get("hf_repo", "unknown"),
             "filtering": "none",
             "tokenizer": f"bpe-{config.vocab_size}",
         },

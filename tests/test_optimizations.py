@@ -12,13 +12,19 @@ import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
 
-from prepare import MAX_SEQ_LEN, Tokenizer, make_dataloader, get_token_bytes
+from data_sources import configure_dataset
 from train import (
     GPT, build_model_config, loss_fn,
-    DEPTH, DEVICE_BATCH_SIZE,
+    DATASET, DEPTH, DEVICE_BATCH_SIZE,
     MATRIX_LR, ADAM_BETAS, X0_BETAS, EMBEDDING_LR, UNEMBEDDING_LR,
     SCALAR_LR, WEIGHT_DECAY,
 )
+import prepare
+from prepare import Tokenizer, make_dataloader, get_token_bytes
+
+# Configure dataset before tests run (updates prepare.py globals)
+configure_dataset(DATASET)
+MAX_SEQ_LEN = prepare.MAX_SEQ_LEN
 
 
 def _make_model():
