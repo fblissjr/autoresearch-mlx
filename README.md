@@ -178,7 +178,7 @@ data/                 - run archives (last_run.json, run_*.json, bench_*.json)
 internal/log/         - session-by-session development notes
 ```
 
-## Current results (v0.7.1)
+## Current results (v0.7.2)
 
 Tested on M2 Ultra, 192GB unified memory. 5-minute training budget, 11.5M parameter GPT with value embeddings.
 

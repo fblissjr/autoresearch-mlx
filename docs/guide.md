@@ -98,19 +98,10 @@ Tags must be unique -- the agent will refuse to reuse an existing branch. This l
 
 ### Interactive mode (human-in-the-loop)
 
-Start Claude Code with the plugin and use a skill:
+Start Claude Code with the plugin (or use the `ar` alias) and invoke a skill:
 
-```bash
-claude --plugin-dir ./experiment-plugin
-```
-
-Then:
 ```
 /experiment:model mar15
-```
-
-Or for data experiments:
-```
 /experiment:data mar15-data
 ```
 
