@@ -8,6 +8,14 @@
   - Add weight decay schedule: linear decay to 0 over training (was constant)
   - Add NaN check on training loss (catches divergence earlier)
 - Rewrite program.md from upstream latest, adapted for Apple Silicon / MLX context
+- Throughput as first-class signal in experiment loop:
+  - Add quality+throughput decision framework to program.md (replaces binary val_bpb keep/discard)
+  - Add avg_tok_sec column to results.tsv (now 6 columns)
+  - Add throughput subplot to analysis.py progress chart
+  - Show avg_tok_sec in analysis.py kept-experiment summary
+- Update CLAUDE.md to v0.7.0: results.tsv schema, ANE integration cross-reference
+- Update AGENTS.md: fix stale Known Deviations (momentum/WD synced), update routing table, 6-column results.tsv
+- Add internal/ane-integration.md: phased ANE integration roadmap with go/no-go benchmark gate
 
 ## 0.6.1
 

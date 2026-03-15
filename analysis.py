@@ -24,6 +24,8 @@ def load_results(path="results.tsv"):
     df = pd.read_csv(path, sep="\t")
     df["val_bpb"] = pd.to_numeric(df["val_bpb"], errors="coerce")
     df["memory_gb"] = pd.to_numeric(df["memory_gb"], errors="coerce")
+    if "avg_tok_sec" in df.columns:
+        df["avg_tok_sec"] = pd.to_numeric(df["avg_tok_sec"], errors="coerce")
     df["status"] = df["status"].str.strip().str.upper()
     return df
 
@@ -45,11 +47,13 @@ def print_summary(df):
     print()
 
     kept = df[df["status"] == "KEEP"].copy()
+    has_tput = "avg_tok_sec" in df.columns and df["avg_tok_sec"].notna().any()
     print(f"KEPT experiments ({len(kept)} total):")
     for i, row in kept.iterrows():
         bpb = row["val_bpb"]
         desc = row["description"]
-        print(f"  #{i:3d}  bpb={bpb:.6f}  mem={row['memory_gb']:.1f}GB  {desc}")
+        tput_str = f"  tok/s={row['avg_tok_sec']:,.0f}" if has_tput and pd.notna(row.get("avg_tok_sec")) else ""
+        print(f"  #{i:3d}  bpb={bpb:.6f}  mem={row['memory_gb']:.1f}GB{tput_str}  {desc}")
     print()
 
 
@@ -91,7 +95,11 @@ def print_top_hits(df):
 
 
 def plot_progress(df, output_path="progress.png"):
-    fig, ax = plt.subplots(figsize=(16, 8))
+    has_tput = "avg_tok_sec" in df.columns and df["avg_tok_sec"].notna().any()
+    nrows = 2 if has_tput else 1
+    fig, axes = plt.subplots(nrows, 1, figsize=(16, 8 * nrows),
+                             sharex=True, squeeze=False)
+    ax = axes[0, 0]
 
     valid = df[df["status"] != "CRASH"].copy()
     valid = valid.reset_index(drop=True)
@@ -128,7 +136,6 @@ def plot_progress(df, output_path="progress.png"):
     best = kept_bpb.min()
     n_total = len(df)
     n_kept = len(df[df["status"] == "KEEP"])
-    ax.set_xlabel("Experiment #", fontsize=12)
     ax.set_ylabel("Validation BPB (lower is better)", fontsize=12)
     ax.set_title(f"Autoresearch Progress: {n_total} Experiments, {n_kept} Kept Improvements", fontsize=14)
     ax.legend(loc="upper right", fontsize=9)
@@ -136,6 +143,25 @@ def plot_progress(df, output_path="progress.png"):
 
     margin = (baseline_bpb - best) * 0.15
     ax.set_ylim(best - margin, baseline_bpb + margin)
+
+    # Throughput subplot
+    if has_tput:
+        ax2 = axes[1, 0]
+        tput_valid = valid[valid["avg_tok_sec"].notna()]
+        disc_t = tput_valid[tput_valid["status"] == "DISCARD"]
+        ax2.scatter(disc_t.index, disc_t["avg_tok_sec"],
+                    c="#cccccc", s=12, alpha=0.5, zorder=2, label="Discarded")
+        kept_t = tput_valid[tput_valid["status"] == "KEEP"]
+        ax2.scatter(kept_t.index, kept_t["avg_tok_sec"],
+                    c="#3498db", s=50, zorder=4, label="Kept", edgecolors="black", linewidths=0.5)
+        if len(kept_t) > 0:
+            ax2.step(kept_t.index, kept_t["avg_tok_sec"], where="post",
+                     color="#2980b9", linewidth=2, alpha=0.7, zorder=3, label="Kept trend")
+        ax2.set_ylabel("Avg tok/sec (higher is better)", fontsize=12)
+        ax2.legend(loc="lower right", fontsize=9)
+        ax2.grid(True, alpha=0.2)
+
+    axes[-1, 0].set_xlabel("Experiment #", fontsize=12)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")

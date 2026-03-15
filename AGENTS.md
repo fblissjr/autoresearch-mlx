@@ -1,4 +1,4 @@
-last updated: 2026-03-09
+last updated: 2026-03-15
 
 # AGENTS.md -- Technical Knowledge Base
 
@@ -18,7 +18,7 @@ Custom GPT with value embeddings, RoPE, sliding window attention, tanh logit cap
 
 | Group | Optimizer | Params | LR | Betas | Filter |
 |-------|-----------|--------|-----|-------|--------|
-| 1 | Muon | layers 2D+ weights (excl. ve_gate) | MATRIX_LR (0.04) | momentum=0.95 | `is_muon_param` |
+| 1 | Muon | layers 2D+ weights (excl. ve_gate) | MATRIX_LR (0.04) | momentum 0.85->0.95 (300 steps) | `is_muon_param` |
 | 2 | AdamW | wte + value_embeds | EMBEDDING_LR * dmodel_scale | (0.8, 0.95) | `is_embedding` |
 | 3 | AdamW | x0_lambdas | SCALAR_LR * dmodel_scale | (0.96, 0.95) | `is_x0_lambdas` |
 | 4 | AdamW | resid_lambdas | SCALAR_LR * 0.01 * dmodel_scale | (0.8, 0.95) | `is_resid_lambdas` |
@@ -30,14 +30,12 @@ Custom GPT with value embeddings, RoPE, sliding window attention, tanh logit cap
 
 ## Agent Feedback Loop
 
-The agent gets 5 metrics via grep: val_bpb (primary), peak_memory_mb, avg_tok_sec, num_steps, eval_seconds. It logs keep/discard decisions to results.tsv (5 columns, matches original repo format). Full structured data is archived in data/run_*.json for human analysis via `uv run analysis.py`.
+The agent gets 5 metrics via grep: val_bpb (primary), peak_memory_mb, avg_tok_sec, num_steps, eval_seconds. It logs keep/discard decisions to results.tsv (6 columns: commit, val_bpb, memory_gb, avg_tok_sec, status, description). Throughput (avg_tok_sec) is a first-class signal -- the agent uses a quality+throughput decision framework (see program.md) rather than binary val_bpb comparison. Full structured data is archived in data/run_*.json for human analysis via `uv run analysis.py`.
 
 ## Known Deviations from PyTorch Reference
 
 - dmodel_scale applied to scalar LRs (reference doesn't)
-- Muon momentum fixed at 0.95 (reference ramps 0.85->0.95 over 300 steps)
-- Weight decay fixed at 0.2 (reference decays as `WD * (1-progress)`)
-- All three are mx.compile compatibility trade-offs
+- Momentum and weight decay schedules were synced with upstream in v0.7.0 (momentum ramps 0.85->0.95 over 300 steps, WD decays linearly to 0)
 
 ## Compiled Training
 
@@ -84,3 +82,7 @@ Reference: [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/a
 - [internal/analysis/2026-03-08_prepare-py-conformance.md](internal/analysis/2026-03-08_prepare-py-conformance.md) -- prepare.py vs upstream verification
 - [internal/analysis/2026-03-08_eval-bottleneck.md](internal/analysis/2026-03-08_eval-bottleneck.md) -- eval 2x slower than projected; Metal allocator fragmentation
 - [internal/analysis/2026-03-08_throughput-regression.md](internal/analysis/2026-03-08_throughput-regression.md) -- resolved: data cycling with 3 shards
+
+## Future Work
+
+- [internal/ane-integration.md](internal/ane-integration.md) -- ANE (Apple Neural Engine) integration roadmap for M2 Ultra

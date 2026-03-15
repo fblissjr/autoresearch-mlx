@@ -1,4 +1,4 @@
-last updated: 2026-03-09
+last updated: 2026-03-15
 
 # CLAUDE.md
 
@@ -78,13 +78,13 @@ See `program.md` for the full autonomous loop. In short:
 3. Run `uv run train.py > run.log 2>&1`
 4. Check: `grep "^val_bpb:\|^peak_memory_mb:\|^avg_tok_sec:\|^num_steps:\|^eval_seconds:" run.log`
 5. If improved, keep. If not, revert.
-6. Log to `results.tsv` (tab-separated: commit, val_bpb, memory_gb, status, description)
+6. Log to `results.tsv` (tab-separated: commit, val_bpb, memory_gb, avg_tok_sec, status, description)
 
 ## Data Model
 
 Two tiers of experiment data:
 - **Agent feedback** (grep from stdout): val_bpb, peak_memory_mb, avg_tok_sec, num_steps, eval_seconds
-- **Agent log** (results.tsv): original 5-column format (commit, val_bpb, memory_gb, status, description)
+- **Agent log** (results.tsv): 6-column format (commit, val_bpb, memory_gb, avg_tok_sec, status, description)
 - **Archived detail** (data/run_*.json): full structured data with step timings, config, hardware info
 - **Human analysis** (`uv run analysis.py`): reads both run_*.json and results.tsv
 
@@ -96,11 +96,14 @@ Two tiers of experiment data:
 - **mx.compile**: Fuses ops. Use `inputs/outputs` for state tracking. Avoid changing Python scalar constants (causes recompilation).
 - **Type promotion**: Use Python scalars (not `mx.array`) for constants in bf16 code
 
-## Current State (v0.6.0)
+## Current State (v0.7.0)
 
 - DEPTH=4, DEVICE_BATCH_SIZE=16 (baseline reset for performance catch-up)
 - 5-group MultiOptimizer: Muon (matrix), AdamW (embeds, x0_lambdas, resid_lambdas, fallback)
+- Muon momentum ramp 0.85->0.95 over 300 steps, weight decay linear decay to 0
 - Multi-dataset: climbmix (default) and tinystories via `data_sources.py`
 - Compiled training when grad_accum=1; uncompiled fallback otherwise
+- Throughput is a first-class signal in the experiment loop (see program.md decision framework)
 
 See [AGENTS.md](AGENTS.md) for accumulated technical knowledge: optimizer routing, implementation notes, known limitations, analysis links.
+See [internal/ane-integration.md](internal/ane-integration.md) for ANE (Apple Neural Engine) integration roadmap.

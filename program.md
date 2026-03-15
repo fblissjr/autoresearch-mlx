@@ -16,7 +16,8 @@ To set up a new experiment, work with the user to:
    - `train.py` -- the file you modify. Model architecture, optimizer, training loop.
 4. **Verify data exists**: Check that the cache directory for the selected dataset exists and contains data shards and a tokenizer. For climbmix: `~/.cache/autoresearch/`. For tinystories: `~/.cache/autoresearch/tinystories/`. If not, tell the human to run `uv run prepare.py` (or `uv run prepare.py --dataset tinystories`).
 5. **Initialize results.tsv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
-6. **Confirm and go**: Confirm setup looks good.
+6. **Run bench.py** (optional): `uv run bench.py` to establish a baseline throughput profile. Not required every session, but useful before starting and when investigating a throughput regression.
+7. **Confirm and go**: Confirm setup looks good.
 
 Once you get confirmation, kick off the experimentation.
 
@@ -78,26 +79,27 @@ grep "^val_bpb:\|^peak_memory_mb:\|^avg_tok_sec:\|^num_steps:\|^eval_seconds:" r
 
 When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated -- commas break in descriptions).
 
-The TSV has a header row and 5 columns:
+The TSV has a header row and 6 columns:
 
 ```
-commit	val_bpb	memory_gb	status	description
+commit	val_bpb	memory_gb	avg_tok_sec	status	description
 ```
 
 1. git commit hash (short, 7 chars)
 2. val_bpb achieved (e.g. 1.234567) -- use 0.000000 for crashes
 3. peak memory in GB, round to .1f (e.g. 13.7 -- divide peak_memory_mb by 1024) -- use 0.0 for crashes
-4. status: `keep`, `discard`, or `crash`
-5. short text description of what this experiment tried
+4. avg_tok_sec from the grep output (e.g. 140000) -- use 0 for crashes
+5. status: `keep`, `discard`, or `crash`
+6. short text description of what this experiment tried
 
 Example:
 
 ```
-commit	val_bpb	memory_gb	status	description
-a1b2c3d	1.859000	13.7	keep	baseline (depth=4)
-b2c3d4e	1.840000	13.9	keep	increase MATRIX_LR to 0.05
-c3d4e5f	1.870000	13.7	discard	switch to GeLU activation
-d4e5f6g	0.000000	0.0	crash	double model width (OOM)
+commit	val_bpb	memory_gb	avg_tok_sec	status	description
+a1b2c3d	1.859000	13.7	140000	keep	baseline (depth=4)
+b2c3d4e	1.840000	13.9	138000	keep	increase MATRIX_LR to 0.05
+c3d4e5f	1.870000	13.7	142000	discard	switch to GeLU activation
+d4e5f6g	0.000000	0.0	0	crash	double model width (OOM)
 ```
 
 ## Session logging
@@ -118,8 +120,25 @@ LOOP FOREVER:
    - val_bpb is the primary metric. But also consider: if avg_tok_sec dropped significantly, you may be getting fewer training steps in the budget, which hurts convergence. If num_steps is much lower than the baseline, the change may have made the model too large or slow. If eval_seconds is unusually high, something may be wrong with the model's forward pass.
 6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
 7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
-8. If val_bpb improved (lower), you "advance" the branch, keeping the git commit
-9. If val_bpb is equal or worse, you git reset back to where you started
+8. Decide whether to keep or discard the change using the **quality+throughput framework** below.
+9. If keeping, you "advance" the branch. If discarding, `git reset` back to where you started.
+
+### Keep/discard decision framework
+
+val_bpb is the primary metric, but throughput (avg_tok_sec) is a first-class signal because faster training = more steps in the 5-minute budget = better eventual val_bpb. Use both metrics together:
+
+**Keep if any of:**
+- val_bpb improved and throughput didn't regress significantly (>15%)
+- val_bpb unchanged (within ~0.001) but throughput improved meaningfully (>10%)
+- val_bpb regressed slightly (<0.003) but throughput improved massively (>25%)
+
+**Discard if:**
+- val_bpb regressed and throughput didn't improve enough to compensate
+- val_bpb improved marginally (<0.005) but throughput cratered (>15% drop)
+
+These are **guidance thresholds, not hard rules.** Use judgment -- same spirit as the simplicity criterion. Note that avg_tok_sec varies ~3-5% between identical runs due to Metal scheduling and thermals. Re-run marginal cases before deciding.
+
+The **simplicity criterion** still applies on top of this: a tiny improvement that adds ugly complexity is not worth it regardless of the metrics.
 
 The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
 
