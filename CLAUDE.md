@@ -55,6 +55,8 @@ The `experiment-plugin/` directory is a Claude Code plugin providing namespaced 
 claude --plugin-dir ./experiment-plugin
 ```
 
+Skills and agents live **only** in `experiment-plugin/` -- do not create `.claude/skills/` or `.claude/agents/`.
+
 | Skill | Usage | Description |
 |-------|-------|-------------|
 | `/experiment:model` | `/experiment:model mar15 [climbmix]` | Launch model experiment loop (reads program.md) |
