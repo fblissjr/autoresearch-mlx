@@ -1,4 +1,4 @@
-last updated: 2026-03-08
+last updated: 2026-03-15
 
 # Data Investigations Backlog
 
@@ -18,10 +18,7 @@ The baseline autoresearch approach is algorithm-driven: optimize the model archi
 - But the data is already clean, so simple heuristic filtering won't yield much
 - The val shard is from the same distribution, so training/eval distribution mismatch isn't an issue
 
-**Remaining lever**: Minimum document length filter (skip <500 char docs to reduce BOS overhead and context fragmentation). ~8% of docs affected. Would need either a pre-filtering script or modifying make_dataloader -- but prepare.py is READ ONLY. Options:
-  1. Pre-filter parquet files and replace in cache dir (hacky but works)
-  2. Propose a filter parameter to make_dataloader (requires prepare.py change)
-  3. Skip -- 8% is probably not enough to move val_bpb meaningfully
+**Remaining lever**: Minimum document length filter (skip <500 char docs to reduce BOS overhead and context fragmentation). ~8% of docs affected. Now unblocked -- the data experiment program (`program_data.md`) allows editing prepare.py. Implement in `text_iterator`.
 
 **Verdict**: climbmix quality is not the bottleneck. Deprioritize simple filtering in favor of more impactful levers (curriculum learning, data mixing).
 
@@ -34,9 +31,10 @@ The baseline autoresearch approach is algorithm-driven: optimize the model archi
 **Priority**: High -- cheapest experiment, zero code changes.
 
 ### 3. Curriculum learning (data ordering)
+**Status**: Unblocked by data experiment program
 **Hypothesis**: Ordering training data by difficulty (shorter/simpler first, harder later) could improve convergence speed. The fixed 5-minute budget makes this especially interesting -- early convergence means more useful training at the end.
-**Approach**: Sort documents by perplexity (from a reference model), length, or vocabulary complexity. Train with ordered vs shuffled data.
-**Considerations**: The dataloader currently does best-fit packing with random order. Changing order means modifying prepare.py (READ ONLY constraint -- would need to discuss).
+**Approach**: Sort documents by perplexity (from a reference model), length, or vocabulary complexity. Train with ordered vs shuffled data. Nemotron 3 Super (Section 2.3) uses two-phase curriculum: Phase 1 = broad diversity, Phase 2 = high-quality focused.
+**Considerations**: The dataloader does best-fit packing with random order. Now editable via the data experiment program (`program_data.md`).
 
 ### 4. Token weighting (non-uniform loss)
 **Hypothesis**: Not all tokens are equally informative. Weighting loss by token informativeness could improve BPB on the evaluation set.
@@ -49,14 +47,26 @@ The baseline autoresearch approach is algorithm-driven: optimize the model archi
 **Considerations**: Requires domain classification of training data. May need multiple data shards.
 
 ### 6. Tokenizer optimization
+**Status**: Unblocked by data experiment program
 **Hypothesis**: The 8K BPE vocabulary is small by design, but vocabulary composition affects BPB. A vocabulary optimized for the training distribution could improve encoding efficiency.
-**Approach**: Compare current tokenizer against alternatives (different vocab sizes, different BPE training data). Measure both encoding efficiency and downstream val_bpb.
-**Considerations**: Tokenizer is in prepare.py (READ ONLY). Would need careful coordination.
+**Approach**: Compare current tokenizer against alternatives (different vocab sizes, different BPE training data). Measure both encoding efficiency and downstream val_bpb. Changing VOCAB_SIZE in prepare.py triggers tokenizer retraining; train.py auto-adapts via `tokenizer.get_vocab_size()`.
+**Considerations**: Now editable via the data experiment program (`program_data.md`). Each vocab change requires a full `prepare.py` re-run (~2 min).
 
 ### 7. Deduplication
 **Hypothesis**: Near-duplicate documents waste training tokens. Dedup at document or paragraph level could improve effective data diversity per training step.
 **Approach**: MinHash or exact-match dedup on the training data. Compare val_bpb with deduped vs original.
 **Considerations**: FineWeb already has some dedup applied. Additional dedup may have diminishing returns.
+
+### 8. Quality-tiered data mixing (Nemotron-inspired)
+**Hypothesis**: Not all documents contribute equally. Partitioning by quality signals and oversampling high-quality tiers should improve val_bpb.
+**Approach**: Score documents by length, repetition ratio, or perplexity. Create quality buckets. Weight higher-quality buckets more in the training mix.
+**Reference**: Nemotron 3 Super technical report, Section 2.3.
+
+### 9. Synthetic data augmentation (Nemotron-inspired)
+**Hypothesis**: Mixing in specialized synthetic datasets (code, reasoning, formal logic) can improve generalization.
+**Approach**: Register new datasets in `data_sources.py`. Mix with climbmix at tuned ratios.
+**Considerations**: Need to find suitable open datasets. Mixing ratio is a hyperparameter. May need per-dataset tokenizer training or a unified tokenizer.
+**Reference**: Nemotron 3 Super technical report, Section 2.3.
 
 ## Implemented: Structured Output Format (v0.1)
 

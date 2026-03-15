@@ -16,6 +16,10 @@
 - Update CLAUDE.md to v0.7.0: results.tsv schema, ANE integration cross-reference
 - Update AGENTS.md: fix stale Known Deviations (momentum/WD synced), update routing table, 6-column results.tsv
 - Add internal/ane-integration.md: phased ANE integration roadmap with go/no-go benchmark gate
+- Add program_data.md: autonomous data experiment loop (Nemotron-inspired techniques backlog)
+- Add docs/guide.md: detailed usage guide for all modes (model, data, engineering, manual)
+- Restructure README: "what you can do" overview table, clearer navigation to programs and guide
+- Update CLAUDE.md: file scope per experiment program, add program_data.md and docs/guide.md to project structure
 
 ## 0.6.1
 

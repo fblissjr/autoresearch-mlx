@@ -22,27 +22,29 @@ Autonomous ML research framework: trains GPT models using MLX on Apple Silicon. 
 ## Project Structure
 
 ```
-train.py         -- Model + training loop (the ONLY file the agent edits during experiments)
-prepare.py       -- Data prep, tokenizer, dataloader, evaluate_bpb (minimize changes, keep aligned with upstream)
-data_sources.py  -- Dataset registry and configuration (multi-dataset support)
-bench.py         -- Performance profiling
-analysis.py      -- Experiment results analysis
-log_utils.py     -- Logging, diagnostics, output formatting utilities
-program.md       -- Autonomous experiment loop instructions
-tests/           -- Test suite
-data/            -- Output files (gitignored contents, tracked via .gitkeep)
-internal/        -- Research notes and session logs (committed)
-  log/           -- Session logs (log_YYYY-MM-DD.md)
+train.py          -- Model + training loop (model program edits this)
+prepare.py        -- Data prep, tokenizer, dataloader, evaluate_bpb (data program edits this)
+data_sources.py   -- Dataset registry and configuration (data program edits this)
+program.md        -- Model experiment autonomous loop
+program_data.md   -- Data experiment autonomous loop
+bench.py          -- Performance profiling
+analysis.py       -- Experiment results analysis
+log_utils.py      -- Logging, diagnostics, output formatting utilities
+docs/guide.md     -- Detailed usage guide for all modes
+tests/            -- Test suite
+data/             -- Output files (gitignored contents, tracked via .gitkeep)
+internal/         -- Research notes and session logs (committed)
+  log/            -- Session logs (log_YYYY-MM-DD.md)
 ```
 
 ## Constraints
 
-- Only `train.py` may be modified during experiment runs
+- **Model experiments** (program.md): only `train.py` may be modified. `prepare.py` and `data_sources.py` are read-only.
+- **Data experiments** (program_data.md): `prepare.py` and `data_sources.py` may be modified. `train.py` is read-only. `evaluate_bpb` in `prepare.py` is always locked.
 - No new dependencies -- only what is in `pyproject.toml`
 - Training runs for exactly 5 minutes (wall clock, excluding startup/compilation)
 - The metric is `val_bpb` (lower is better)
 - `evaluate_bpb` in `prepare.py` is the ground truth and must not be changed
-- `prepare.py` should be minimally modified to stay aligned with upstream
 - Dataset configuration lives in `data_sources.py`, not in prepare.py
 - `program.md` must match actual train.py output format and field names -- verify after changing train.py output
 
@@ -72,7 +74,7 @@ If the log file for today doesn't exist, create it with the standard header form
 
 ## Experiment Workflow
 
-See `program.md` for the full autonomous loop. In short:
+Two autonomous loops: `program.md` (model experiments on train.py) and `program_data.md` (data experiments on prepare.py + data_sources.py). Both use the same eval metric and results format. In short (model program):
 1. Edit `train.py` with an idea
 2. Commit
 3. Run `uv run train.py > run.log 2>&1`
