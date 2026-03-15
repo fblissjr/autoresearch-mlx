@@ -30,20 +30,15 @@ experiment: <short description of what changed>
 uv run train.py > run.log 2>&1
 ```
 
-This takes ~5 minutes (training) + eval time. Monitor with:
-```bash
-tail -1 run.log | tr '\r' '\n' | tail -1
-```
+This takes ~5 minutes (training) + eval time.
 
 **Timeout**: If the run exceeds 10 minutes, kill it (`pkill -f "python.*train.py"`) and treat as failure.
 
 ### 3. Extract results
 
-```bash
-grep "^val_bpb:\|^peak_memory_mb:\|^training_seconds:\|^total_seconds:\|^num_steps:" run.log | tr '\r' '\n'
-```
+Read `data/last_run.json`. Key fields: `result.val_bpb`, `training.peak_memory_mb`, `training.avg_tok_sec`, `training.total_steps`, `training.eval_seconds`.
 
-If grep output is empty, the run crashed. Read the traceback:
+If `data/last_run.json` was not created (or its timestamp is stale), the run crashed. Read the traceback:
 ```bash
 tail -50 run.log
 ```

@@ -20,3 +20,7 @@ coderef/
 
 # Results file
 results.tsv
+
+# etc
+.DS_Store
+run.log

@@ -94,14 +94,23 @@ def hardware_info():
 
 
 def save_json(prefix, data):
-    """Write data to data/<prefix>_<timestamp>.json and print the path.
+    """Write data to data/<prefix>_<timestamp>.json and data/last_run.json.
 
-    Returns the output path.
+    The timestamped file is the permanent archive. last_run.json is a
+    stable path that always points to the most recent run -- agents and
+    scripts can read it without globbing.
+
+    Returns the timestamped output path.
     """
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     out_path = os.path.join("data", f"{prefix}_{timestamp}.json")
+    payload = orjson.dumps(data, option=orjson.OPT_INDENT_2)
     with open(out_path, "wb") as f:
-        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
+        f.write(payload)
+    # Stable path for machine consumers (agents, scripts)
+    last_run_path = os.path.join("data", "last_run.json")
+    with open(last_run_path, "wb") as f:
+        f.write(payload)
     print(f"Results saved to {out_path}")
     return out_path
 

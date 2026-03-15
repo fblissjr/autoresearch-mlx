@@ -30,7 +30,11 @@ Custom GPT with value embeddings, RoPE, sliding window attention, tanh logit cap
 
 ## Agent Feedback Loop
 
-The agent gets 5 metrics via grep: val_bpb (primary), peak_memory_mb, avg_tok_sec, num_steps, eval_seconds. It logs keep/discard decisions to results.tsv (6 columns: commit, val_bpb, memory_gb, avg_tok_sec, status, description). Throughput (avg_tok_sec) is a first-class signal -- the agent uses a quality+throughput decision framework (see program.md) rather than binary val_bpb comparison. Full structured data is archived in data/run_*.json for human analysis via `uv run analysis.py`.
+train.py produces two output channels: `run.log` (raw stdout+stderr for crash diagnostics) and `data/last_run.json` (structured JSON for metric extraction). The agent reads `last_run.json` for 5 key metrics: `result.val_bpb` (primary), `training.peak_memory_mb`, `training.avg_tok_sec`, `training.total_steps`, `training.eval_seconds`. On crash, the agent falls back to `tail -50 run.log` for the stack trace.
+
+It logs keep/discard decisions to results.tsv (6 columns: commit, val_bpb, memory_gb, avg_tok_sec, status, description). Throughput (avg_tok_sec) is a first-class signal -- the agent uses a quality+throughput decision framework (see program.md) rather than binary val_bpb comparison.
+
+Timestamped archives (`data/run_*.json`) are written alongside `last_run.json` for human analysis via `uv run analysis.py`.
 
 ## Known Deviations from PyTorch Reference
 
@@ -48,7 +52,7 @@ The agent gets 5 metrics via grep: val_bpb (primary), peak_memory_mb, avg_tok_se
 - `mx.fast.rms_norm` requires a weight parameter even for "weightless" norm. Cache the ones vector.
 - `mx.fast.rope` requires `base` as float (10000.0 not 10000).
 - `mx.metal.get_peak_memory()` is deprecated -- use `mx.get_peak_memory()`.
-- Training output uses `\r` carriage returns -- pipe through `tr '\r' '\n'` when reading logs.
+- Training output uses `\r` carriage returns in `run.log`. This doesn't affect the agent (it reads `data/last_run.json` for metrics), but humans reading `run.log` should pipe through `tr '\r' '\n'`.
 - First training step is slow (~2.5s) due to graph compilation; subsequent steps much faster.
 
 ## Memory and Performance

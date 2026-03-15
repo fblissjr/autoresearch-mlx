@@ -16,7 +16,7 @@ To set up a new data experiment, work with the user to:
    - `CLAUDE.md` -- project constraints and conventions.
    - `train.py` -- the training script. Read-only context; you run it but don't edit it.
 4. **Verify data exists**: Check that the cache directory for the selected dataset exists and contains data shards and a tokenizer. For climbmix: `~/.cache/autoresearch/`. For tinystories: `~/.cache/autoresearch/tinystories/`. If not, tell the human to run `uv run prepare.py` (or `uv run prepare.py --dataset tinystories`).
-5. **Establish baseline**: Run `uv run train.py > run.log 2>&1` with the current data pipeline. Record the baseline val_bpb.
+5. **Establish baseline**: Run `uv run train.py > run.log 2>&1` with the current data pipeline. Read `data/last_run.json` for the baseline val_bpb.
 6. **Initialize results.tsv**: Create `results.tsv` with just the header row. Record the baseline after the first run.
 7. **Confirm and go**: Confirm setup looks good.
 
@@ -68,11 +68,7 @@ depth:            4
 dmodel_scale:     1.7321
 ```
 
-Extract key metrics:
-
-```
-grep "^val_bpb:\|^peak_memory_mb:\|^avg_tok_sec:\|^num_steps:\|^eval_seconds:" run.log
-```
+The script also writes structured results to `data/last_run.json` (stable path, always the most recent run) and a timestamped archive `data/run_YYYYMMDD_HHMMSS.json`.
 
 ## Logging results
 
@@ -87,7 +83,7 @@ commit	val_bpb	memory_gb	avg_tok_sec	status	description
 1. git commit hash (short, 7 chars)
 2. val_bpb achieved (e.g. 1.234567) -- use 0.000000 for crashes
 3. peak memory in GB, round to .1f (e.g. 13.7 -- divide peak_memory_mb by 1024) -- use 0.0 for crashes
-4. avg_tok_sec from the grep output (e.g. 140000) -- use 0 for crashes
+4. avg_tok_sec from last_run.json (e.g. 140000) -- use 0 for crashes
 5. status: `keep`, `discard`, or `crash`
 6. short text description of what this experiment tried
 
@@ -105,10 +101,10 @@ LOOP FOREVER:
 2. Edit `prepare.py` and/or `data_sources.py` with a data idea.
 3. If the data pipeline changed structurally (tokenizer retrained, sharding changed, new dataset added): run `uv run prepare.py --dataset <name>` before training.
 4. git commit
-5. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything -- do NOT use tee or let output flood your context)
-6. Read out the results: `grep "^val_bpb:\|^peak_memory_mb:\|^avg_tok_sec:\|^num_steps:\|^eval_seconds:" run.log`
+5. Run the experiment: `uv run train.py > run.log 2>&1` (discard stdout -- do NOT use tee or let output flood your context)
+6. Read the results from `data/last_run.json`. Key fields: `result.val_bpb`, `training.peak_memory_mb`, `training.avg_tok_sec`, `training.total_steps`, `training.eval_seconds`.
    - val_bpb is the primary metric. Also watch avg_tok_sec -- data pipeline changes shouldn't tank throughput. If they do, the dataloader or tokenizer change may be introducing overhead.
-7. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
+7. If `data/last_run.json` was not created (or its timestamp is stale), the run crashed. Run `tail -50 run.log` for the stack trace and training progress up to the crash. Attempt a fix. If you can't get things to work after more than a few attempts, give up.
 8. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
 9. Decide whether to keep or discard the change using the **quality+throughput framework** below.
 10. If keeping, you "advance" the branch. If discarding, `git reset` back to where you started.

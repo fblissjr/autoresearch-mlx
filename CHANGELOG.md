@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1
+
+- Add `data/last_run.json` as structured machine interface for experiment results
+  - `save_json` now writes both timestamped archive and stable `last_run.json`
+  - Agent reads `data/last_run.json` for metrics instead of grepping stdout
+  - `run.log` retained for crash diagnostics and progress monitoring
+- Update program.md, program_data.md, run-experiment skill, docs/guide.md, CLAUDE.md
+
 ## 0.7.0
 
 - Sync algorithmic improvements from upstream karpathy/autoresearch:

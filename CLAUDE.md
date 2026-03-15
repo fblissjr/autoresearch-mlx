@@ -17,6 +17,7 @@ Autonomous ML research framework: trains GPT models using MLX on Apple Silicon. 
 | Train (5 min) | `uv run train.py` |
 | Run tests | `uv run python tests/test_optimizations.py` |
 | Benchmark | `uv run bench.py` |
+| Analyze results | `uv run analysis.py` |
 | Debug mode | `AUTORESEARCH_DEBUG=1` or `--debug` flag |
 
 ## Project Structure
@@ -25,28 +26,63 @@ Autonomous ML research framework: trains GPT models using MLX on Apple Silicon. 
 train.py          -- Model + training loop (model program edits this)
 prepare.py        -- Data prep, tokenizer, dataloader, evaluate_bpb (data program edits this)
 data_sources.py   -- Dataset registry and configuration (data program edits this)
+log_utils.py      -- Structured JSON output, diagnostics, logging
 program.md        -- Model experiment autonomous loop
 program_data.md   -- Data experiment autonomous loop
 bench.py          -- Performance profiling
 analysis.py       -- Experiment results analysis
-log_utils.py      -- Logging, diagnostics, output formatting utilities
 docs/guide.md     -- Detailed usage guide for all modes
 tests/            -- Test suite
-data/             -- Output files (gitignored contents, tracked via .gitkeep)
+data/             -- Run archives and output (gitignored contents, tracked via .gitkeep)
+  last_run.json   -- Stable path: most recent run's structured results
+  run_*.json      -- Timestamped archive of every run
+  bench_*.json    -- Benchmark archives
 internal/         -- Research notes and session logs (committed)
   log/            -- Session logs (log_YYYY-MM-DD.md)
 ```
 
-## Constraints
+## Program Architecture
+
+Two autonomous programs with non-overlapping edit scopes:
 
 - **Model experiments** (program.md): only `train.py` may be modified. `prepare.py` and `data_sources.py` are read-only.
-- **Data experiments** (program_data.md): `prepare.py` and `data_sources.py` may be modified. `train.py` is read-only. `evaluate_bpb` in `prepare.py` is always locked.
+- **Data experiments** (program_data.md): `prepare.py` and `data_sources.py` may be modified. `train.py` is read-only.
+- Both: `evaluate_bpb` in `prepare.py` is the ground truth and must not be changed.
+
+Cross-cutting changes (e.g., token loss weighting) require human direction.
+
+## Constraints
+
 - No new dependencies -- only what is in `pyproject.toml`
 - Training runs for exactly 5 minutes (wall clock, excluding startup/compilation)
 - The metric is `val_bpb` (lower is better)
-- `evaluate_bpb` in `prepare.py` is the ground truth and must not be changed
 - Dataset configuration lives in `data_sources.py`, not in prepare.py
 - `program.md` must match actual train.py output format and field names -- verify after changing train.py output
+
+## Experiment Workflow
+
+Both programs follow the same loop. In short (model program):
+1. Edit `train.py` with an idea
+2. Commit
+3. Run `uv run train.py > run.log 2>&1`
+4. Read results from `data/last_run.json`
+5. If improved, keep. If not, revert.
+6. Log to `results.tsv` (tab-separated: commit, val_bpb, memory_gb, avg_tok_sec, status, description)
+
+## Output Channels
+
+`train.py` produces two output channels with different consumers:
+
+| Channel | Path | Format | Consumer | Lifetime |
+|---------|------|--------|----------|----------|
+| Raw log | `run.log` | stdout+stderr text | Agent (crash diagnostics), human (progress) | Overwritten each run, gitignored |
+| Structured results | `data/last_run.json` | JSON | Agent (metric extraction) | Overwritten each run, gitignored |
+| Archived results | `data/run_YYYYMMDD_HHMMSS.json` | JSON | `analysis.py`, human review | Permanent, gitignored |
+| Experiment log | `results.tsv` | TSV (6 columns) | Agent (session tracking), `analysis.py` | Append-only, gitignored |
+
+The agent reads `data/last_run.json` for metrics (not grep). On crash, `data/last_run.json` won't be created; the agent reads `tail -50 run.log` for the stack trace.
+
+Key fields in `last_run.json`: `result.val_bpb`, `training.peak_memory_mb`, `training.avg_tok_sec`, `training.total_steps`, `training.eval_seconds`.
 
 ## Code Conventions
 
@@ -60,6 +96,7 @@ internal/         -- Research notes and session logs (committed)
 - `CLAUDE.md` and `AGENTS.md` are committed
 - `internal/log/` is committed -- open research repo
 - `data/` tracked via `.gitkeep`, contents gitignored
+- `run.log` and `results.tsv` are gitignored
 - Never include absolute paths, usernames, or system-specific details in committed files
 - Use neutral language when referencing other implementations (not "competing", "rival", etc.)
 
@@ -72,24 +109,6 @@ After every commit, update `internal/log/log_YYYY-MM-DD.md` (today's date) with 
 
 If the log file for today doesn't exist, create it with the standard header format (see existing logs for reference).
 
-## Experiment Workflow
-
-Two autonomous loops: `program.md` (model experiments on train.py) and `program_data.md` (data experiments on prepare.py + data_sources.py). Both use the same eval metric and results format. In short (model program):
-1. Edit `train.py` with an idea
-2. Commit
-3. Run `uv run train.py > run.log 2>&1`
-4. Check: `grep "^val_bpb:\|^peak_memory_mb:\|^avg_tok_sec:\|^num_steps:\|^eval_seconds:" run.log`
-5. If improved, keep. If not, revert.
-6. Log to `results.tsv` (tab-separated: commit, val_bpb, memory_gb, avg_tok_sec, status, description)
-
-## Data Model
-
-Two tiers of experiment data:
-- **Agent feedback** (grep from stdout): val_bpb, peak_memory_mb, avg_tok_sec, num_steps, eval_seconds
-- **Agent log** (results.tsv): 6-column format (commit, val_bpb, memory_gb, avg_tok_sec, status, description)
-- **Archived detail** (data/run_*.json): full structured data with step timings, config, hardware info
-- **Human analysis** (`uv run analysis.py`): reads both run_*.json and results.tsv
-
 ## MLX Notes
 
 - **Lazy evaluation**: operations build a graph; `mx.eval()` materializes results
@@ -98,7 +117,7 @@ Two tiers of experiment data:
 - **mx.compile**: Fuses ops. Use `inputs/outputs` for state tracking. Avoid changing Python scalar constants (causes recompilation).
 - **Type promotion**: Use Python scalars (not `mx.array`) for constants in bf16 code
 
-## Current State (v0.7.0)
+## Current State (v0.7.1)
 
 - DEPTH=4, DEVICE_BATCH_SIZE=16 (baseline reset for performance catch-up)
 - 5-group MultiOptimizer: Muon (matrix), AdamW (embeds, x0_lambdas, resid_lambdas, fallback)
@@ -106,6 +125,7 @@ Two tiers of experiment data:
 - Multi-dataset: climbmix (default) and tinystories via `data_sources.py`
 - Compiled training when grad_accum=1; uncompiled fallback otherwise
 - Throughput is a first-class signal in the experiment loop (see program.md decision framework)
+- Structured JSON output via `data/last_run.json` for agent metric extraction
 
 See [AGENTS.md](AGENTS.md) for accumulated technical knowledge: optimizer routing, implementation notes, known limitations, analysis links.
 See [internal/ane-integration.md](internal/ane-integration.md) for ANE (Apple Neural Engine) integration roadmap.
