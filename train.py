@@ -5,6 +5,7 @@ Usage: uv run train.py
 """
 
 import gc
+import math
 import time
 from dataclasses import dataclass, asdict
 from functools import partial
@@ -227,6 +228,22 @@ class GPT(nn.Module):
             'transformer_matrices': layers_n, 'scalars': scalars_n, 'total': total,
         }
 
+    def estimate_flops(self):
+        """Estimated FLOPs per token (forward + backward), accounting for attention windows."""
+        window_sizes = self.config.compute_window_sizes()
+        total = sum(p.size for _, p in tree_flatten(self.parameters()))
+        ve_size = sum(ve.weight.size for ve in self.value_embeds.values())
+        nparams_exclude = (self.wte.weight.size + ve_size +
+                          self.resid_lambdas.size + self.x0_lambdas.size)
+        h = self.config.n_head
+        q = self.config.n_embd // self.config.n_head
+        t = self.config.sequence_len
+        attn_flops = 0
+        for window in window_sizes:
+            effective_seq = t if window < 0 else min(window, t)
+            attn_flops += 12 * h * q * effective_seq
+        return 6 * (total - nparams_exclude) + attn_flops
+
     def __call__(self, idx, targets=None, reduction='mean'):
         window_sizes = self.config.compute_window_sizes()
 
@@ -339,7 +356,7 @@ if __name__ == "__main__":
     for key, value in param_counts.items():
         print(f"  {key:24s}: {value:,}")
     num_params = param_counts['total']
-    num_flops_per_token = 6 * num_params
+    num_flops_per_token = model.estimate_flops()
     print(f"Estimated FLOPs per token: {num_flops_per_token:e}")
 
     tokens_per_fwdbwd = DEVICE_BATCH_SIZE * MAX_SEQ_LEN
@@ -446,7 +463,7 @@ if __name__ == "__main__":
         mx.eval(train_loss_val, model.parameters(), optimizer.state)
 
         train_loss_f = train_loss_val.item()
-        if train_loss_f > 100:
+        if math.isnan(train_loss_f) or train_loss_f > 100:
             print("FAIL")
             exit(1)
 
@@ -497,12 +514,28 @@ if __name__ == "__main__":
         scheds.append(optim.cosine_decay(peak_lr, decay_steps=max(1, warmdown_steps), end=end_lr))
         return optim.join_schedules(scheds, bounds)
 
+    # Muon momentum ramp: 0.85 -> 0.95 over 300 steps (synced from upstream)
+    def make_momentum_schedule(start=0.85, end=0.95, ramp_steps=300):
+        def schedule(step):
+            frac = min(step / ramp_steps, 1.0)
+            return (1 - frac) * start + frac * end
+        return schedule
+
+    # Weight decay schedule: linear decay to 0 over training (synced from upstream)
+    def make_wd_schedule(initial_wd, total_steps):
+        def schedule(step):
+            progress = min(step / max(total_steps, 1), 1.0)
+            return initial_wd * (1 - progress)
+        return schedule
+
     # Swap schedules into existing optimizer instances (step counters already correct)
     all_opts = [muon_opt, embed_opt, x0_opt, resid_opt, fallback_opt]
     peak_lrs = [MATRIX_LR, EMBEDDING_LR * dmodel_scale, SCALAR_LR * dmodel_scale,
                 SCALAR_LR * 0.01 * dmodel_scale, UNEMBEDDING_LR * dmodel_scale]
     for opt, peak_lr in zip(all_opts, peak_lrs):
         opt._schedulers['learning_rate'] = make_lr_schedule(peak_lr)
+    muon_opt._schedulers['momentum'] = make_momentum_schedule()
+    muon_opt._schedulers['weight_decay'] = make_wd_schedule(WEIGHT_DECAY, estimated_total_steps)
 
     # Build compiled training step
     state = [model.state, optimizer.state]
@@ -560,7 +593,7 @@ if __name__ == "__main__":
 
         step_timings.append((step, round(dt, 4), tok_per_sec_step, round(train_loss_f, 6), active_mb, peak_mb))
 
-        if train_loss_f > 100:
+        if math.isnan(train_loss_f) or train_loss_f > 100:
             print("FAIL")
             exit(1)
 

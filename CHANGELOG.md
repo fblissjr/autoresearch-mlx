@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- Sync algorithmic improvements from upstream karpathy/autoresearch:
+  - Add `estimate_flops` method: proper FLOPs-per-token accounting (excludes embeddings/scalars, adds per-window attention FLOPs)
+  - Add Muon momentum schedule: ramp from 0.85 to 0.95 over 300 steps (was fixed at 0.95)
+  - Add weight decay schedule: linear decay to 0 over training (was constant)
+  - Add NaN check on training loss (catches divergence earlier)
+- Rewrite program.md from upstream latest, adapted for Apple Silicon / MLX context
+
 ## 0.6.1
 
 - Add eval_seconds timing to train.py output and run_*.json
