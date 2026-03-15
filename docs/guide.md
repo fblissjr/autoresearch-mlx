@@ -52,6 +52,63 @@ Infrastructure improvements to throughput, hardware utilization, or developer to
 
 **Throughput work**: Handled within the model experiment loop via the quality+throughput decision framework in [program.md](../program.md).
 
+## Running with Claude Code
+
+Both experiment programs (model and data) are designed to run as autonomous loops inside Claude Code. Two modes are supported.
+
+### Interactive mode (human-in-the-loop)
+
+Start Claude Code normally and reference the program file. The agent will ask for setup confirmation and permission for each tool call.
+
+```bash
+claude
+```
+
+Then paste:
+```
+Read program.md and follow the instructions. Let's use run tag "mar15".
+```
+
+Or for data experiments:
+```
+Read program_data.md and follow the instructions. Let's use run tag "mar15-data".
+```
+
+### Autonomous mode (unattended)
+
+For overnight or hands-free runs where no human is present to approve tool calls.
+
+**Step 1: Permissions are pre-configured.** The project ships `.claude/settings.json` with a scoped allowlist covering all experiment operations (file reads/edits, git commits, training runs, result extraction). `git push` is explicitly denied -- the agent works locally only.
+
+**Step 2: Launch with a non-interactive prompt.** Use `-p` to provide the full prompt upfront so the agent doesn't need to ask for input:
+
+```bash
+# Model experiments
+claude -p "Read program.md and follow the experiment loop instructions. Run tag: mar15. Dataset: climbmix. Do not ask for confirmation -- start the loop immediately."
+
+# Data experiments
+claude -p "Read program_data.md and follow the experiment loop instructions. Run tag: mar15-data. Dataset: climbmix. Do not ask for confirmation -- start the loop immediately."
+```
+
+**Step 3: Walk away.** The agent will run experiments until interrupted with Ctrl+C.
+
+### What the allowlist permits
+
+The committed `.claude/settings.json` allows:
+- File operations: Read, Edit, Write (for editing experiment files and logging)
+- `uv run` (training, data prep, tests)
+- Git operations: add, commit, checkout, branch, reset, log, diff, status (for the experiment loop)
+- Shell utilities: grep, tail, head, tr, ls, cat, pgrep, pkill, printf (for result extraction and process management)
+
+**Explicitly denied**: `git push` -- the agent never pushes to remote. All work stays on local experiment branches.
+
+### Safety notes
+
+- The agent works on a dedicated branch (`autoresearch/<tag>` or `autoresearch-data/<tag>`). Master is never modified.
+- `git reset --hard` is allowed because the experiment loop uses it to discard failed experiments on the experiment branch. This is expected and safe.
+- The agent commits frequently (one commit per experiment). If something goes wrong, `git log` and `git reset` can recover any state.
+- To add personal overrides without affecting the project, use `.claude/settings.local.json` (gitignored).
+
 ## Manual operations
 
 ### Single training run

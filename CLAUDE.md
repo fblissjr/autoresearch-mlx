@@ -2,7 +2,7 @@ last updated: 2026-03-15
 
 # CLAUDE.md
 
-Autonomous ML research framework: trains GPT models using MLX on Apple Silicon. An AI agent iterates on `train.py` to minimize val_bpb within a fixed 5-minute training budget.
+Autonomous ML research framework: trains GPT models using MLX on Apple Silicon. AI agents iterate on the model (`train.py`) and data pipeline (`prepare.py` + `data_sources.py`) to minimize val_bpb within a fixed 5-minute training budget.
 
 ## Hardware
 

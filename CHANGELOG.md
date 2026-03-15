@@ -20,6 +20,9 @@
 - Add docs/guide.md: detailed usage guide for all modes (model, data, engineering, manual)
 - Restructure README: "what you can do" overview table, clearer navigation to programs and guide
 - Update CLAUDE.md: file scope per experiment program, add program_data.md and docs/guide.md to project structure
+- Fix program_data.md: path bug, missing sections (memory, simplicity, NEVER STOP), reorder backlog, add AGENTS.md to reads, eval compatibility note, clarify cross-program scope
+- Add .claude/settings.json: scoped allowlist for autonomous experiment runs (git push denied)
+- Add "Running with Claude Code" section to docs/guide.md: interactive and autonomous modes
 
 ## 0.6.1
 

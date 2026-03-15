@@ -11,7 +11,8 @@ To set up a new data experiment, work with the user to:
 3. **Read the in-scope files**: The repo is small. Read these files for full context:
    - `prepare.py` -- data prep, tokenizer, dataloader. You modify this.
    - `data_sources.py` -- dataset registry and configuration. You modify this.
-   - `data-investigations.md` -- backlog of data experiments and findings.
+   - `internal/data-investigations.md` -- backlog of data experiments and findings.
+   - `AGENTS.md` -- accumulated technical knowledge. The "Data Pipeline" section covers how prepare.py works (numpy packing, text_iterator semantics).
    - `CLAUDE.md` -- project constraints and conventions.
    - `train.py` -- the training script. Read-only context; you run it but don't edit it.
 4. **Verify data exists**: Check that the cache directory for the selected dataset exists and contains data shards and a tokenizer. For climbmix: `~/.cache/autoresearch/`. For tinystories: `~/.cache/autoresearch/tinystories/`. If not, tell the human to run `uv run prepare.py` (or `uv run prepare.py --dataset tinystories`).
@@ -34,6 +35,7 @@ This runs on Apple Silicon (MLX framework, unified memory). The training script 
 - `evaluate_bpb` in `prepare.py` -- the ground truth metric. This function is locked.
 - `train.py` -- that's the model program's domain. The data program runs it as-is.
 - `pyproject.toml` -- no new dependencies. Only use what's already available.
+- **Eval data compatibility**: The validation shards must remain loadable by `evaluate_bpb`. If you change sharding format, shard naming, or tokenization, verify that the eval path still works before committing. A broken eval loader produces confusing crashes, not a clear error.
 
 **The goal is simple: get the lowest val_bpb** by improving the data that the model trains on. The model architecture and training loop are fixed -- you're optimizing what the model sees, not how it learns.
 
@@ -41,6 +43,10 @@ This runs on Apple Silicon (MLX framework, unified memory). The training script 
 - Some experiments require re-running `uv run prepare.py` (adds ~2 min). Changes to data filtering, sharding, or the tokenizer all need a prepare step. Dataloader-only changes (e.g., packing strategy, batch ordering) don't.
 - Changing `VOCAB_SIZE` triggers tokenizer retraining. `train.py` auto-adapts because it reads vocab_size from the loaded tokenizer via `tokenizer.get_vocab_size()`.
 - Data changes affect all future training runs (unlike model experiments which are self-contained). Be careful with destructive changes to cached data. When in doubt, use a separate cache directory.
+
+**Memory** is a soft constraint. Data pipeline changes can affect memory profile (e.g., changing MAX_SEQ_LEN, VOCAB_SIZE, or packing strategy). Some increase is acceptable for meaningful val_bpb gains, but it should not blow up dramatically. This runs on Apple Silicon with unified memory (no separate VRAM). Monitor peak_memory_mb in the output.
+
+**Simplicity criterion**: All else being equal, simpler is better. A complex filtering scheme that gains 0.001 bpb isn't worth it. Conversely, removing something and getting equal or better results is a great outcome -- that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude.
 
 ## Output format
 
@@ -126,33 +132,32 @@ These are **guidance thresholds, not hard rules.** Use judgment. Note that avg_t
 
 **Crashes**: Same as model program. Fix dumb bugs and re-run, skip fundamentally broken ideas.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. The loop runs until the human interrupts you, period.
+**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder -- re-read `internal/data-investigations.md` for new angles, try combining previous near-misses, try more radical data pipeline changes. The loop runs until the human interrupts you, period.
+
+As an example use case, a user might leave you running while they sleep. If each experiment takes you ~7 minutes (5 min training + 2 min prepare overhead) then you can run approx 8/hour, for a total of about 60-70 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
 
 ## Starting backlog
 
-Prioritized list of data experiments to try. See `internal/data-investigations.md` for detailed findings.
+Prioritized list of data experiments to try, ordered by implementation difficulty (easy wins first). See `internal/data-investigations.md` for detailed findings.
 
-### Nemotron-inspired techniques
+### Quick wins
 
-From the NVIDIA Nemotron 3 Super technical report (Section 2.3), adapted for our scale:
+1. **More shards for diversity**: Currently using 20 of 6,542 available shards. More shards = more document diversity per training run. Zero code changes, just adjust `NUM_SHARDS`.
 
-1. **Two-phase curriculum**: Phase 1 = broad diversity (all shards, shuffled). Phase 2 = high-quality focused (select best documents by quality signals). Implement via data ordering in `make_dataloader` or a two-phase shard selection.
+2. **Document length filtering**: Skip documents <500 chars to reduce BOS overhead and context fragmentation. ~8% of climbmix docs affected. Simple change to `text_iterator`.
 
-2. **Quality-tiered data mixing**: climbmix is likely FineWeb-Edu derived. Partition documents by quality signals (length, perplexity, repetition ratio) and weight higher-quality tiers more heavily in the training mix.
+3. **Tokenizer optimization**: Different vocab sizes (4K, 16K, 32K) may improve encoding efficiency and downstream val_bpb. Requires tokenizer retraining and a fresh `prepare.py` run, but the code change is straightforward.
 
-3. **Synthetic data augmentation**: Mix in open datasets with specialized content. Register as new datasets in `data_sources.py`. Candidates:
-   - Code/algorithm concepts
-   - Formal logic and reasoning
-   - High-quality educational content
+### Data quality techniques
 
 4. **Deduplication**: MinHash or exact-match dedup at document or paragraph level. climbmix likely has some dedup already, but additional passes may help.
 
-### Existing backlog items
+5. **Quality-tiered data mixing**: climbmix is likely FineWeb-Edu derived. Partition documents by quality signals (length, perplexity, repetition ratio) and weight higher-quality tiers more heavily in the training mix.
 
-5. **Document length filtering**: Skip documents <500 chars to reduce BOS overhead and context fragmentation. ~8% of climbmix docs affected. Implement in `text_iterator`.
+6. **Two-phase curriculum**: Phase 1 = broad diversity (all shards, shuffled). Phase 2 = high-quality focused (select best documents by quality signals). Implement via data ordering in `make_dataloader` or a two-phase shard selection. (From NVIDIA Nemotron 3 Super technical report, Section 2.3.)
 
-6. **More shards for diversity**: Currently using 20 of 6,542 available shards. More shards = more document diversity per training run. Zero code changes, just adjust `NUM_SHARDS`.
+7. **Synthetic data augmentation**: Mix in open datasets with specialized content. Register as new datasets in `data_sources.py`. Candidates: code/algorithm concepts, formal logic and reasoning, high-quality educational content.
 
-7. **Tokenizer optimization**: Different vocab sizes (4K, 16K, 32K) may improve encoding efficiency and downstream val_bpb. Requires tokenizer retraining and a fresh `prepare.py` run.
+### Cross-program (human-directed)
 
-8. **Token weighting via loss modification**: Weight loss by token informativeness. NOTE: this crosses into train.py territory -- coordinate with model program if pursuing.
+8. **Token weighting via loss modification**: Weight loss by token informativeness. This requires changes to both `train.py` and `prepare.py`, which means it crosses program boundaries. Cross-cutting changes are manual human-directed work, not autonomous loop work -- the programs are deliberately scoped to prevent agents from touching too much at once. Flag this to the human if you think it's worth pursuing.
